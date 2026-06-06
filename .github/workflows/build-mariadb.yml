@@ -25,7 +25,7 @@ jobs:
     env:
       TZ: Asia/Kolkata
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
-      IMAGE_NAME: fineract
+      IMAGE_NAME: taalamke/taalam-fincore:latest
       COMPOSE_FILE: docker-compose-mariadb-test.yml
       DOCKER_LOG_DIR: ci-logs/mariadb-shard-${{ matrix.shard_index }}
       AWS_ENDPOINT_URL: http://localhost:4566

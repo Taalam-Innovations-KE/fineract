@@ -18,7 +18,7 @@
 
 services:
   fineract:
-    image: fineract:latest
+    image: "${IMAGE_NAME:-fineract:latest}"
     user: "${FINERACT_USER:-1000}:${FINERACT_GROUP:-1000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -4,7 +4,7 @@ on:
     secrets:
       DEVELOCITY_ACCESS_KEY:
         required: false
-      DOCKERHUB_USER:
+      DOCKERHUB_USERNAME:
         required: false
       DOCKERHUB_TOKEN:
         required: false
@@ -50,7 +50,7 @@ jobs:
           echo "long_hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
         id: git_hashes
 
-      - name: Build the Apache Fineract image
+      - name: Build the Taalam Fincore image
         env:
           REF_NAME: ${{ github.ref_name }}
           SHORT_HASH: ${{ steps.git_hashes.outputs.short_hash }}
@@ -67,8 +67,8 @@ jobs:
             fi
           fi
           ./gradlew --no-daemon --console=plain :fineract-provider:jib -x test -x cucumber -x buildJavaSdk  \
-            -Djib.to.auth.username=${{secrets.DOCKERHUB_USER}} \
+            -Djib.to.auth.username=${{secrets.DOCKERHUB_USERNAME}} \
             -Djib.to.auth.password=${{secrets.DOCKERHUB_TOKEN}} \
             -Djib.from.platforms=linux/amd64,linux/arm64 \
-            -Djib.to.image=apache/fineract \
+            -Djib.to.image=taalamke/taalam-fincore \
             -Djib.to.tags=$TAGS

@@ -24,7 +24,7 @@ jobs:
 
     env:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
-      IMAGE_NAME: fineract
+      IMAGE_NAME: taalamke/taalam-fincore:latest
       COMPOSE_FILE: docker-compose-postgresql-test-activemq.yml
       DOCKER_LOG_DIR: ci-logs/e2e-shard-${{ matrix.shard_index }}
       BASE_URL: https://localhost:8443

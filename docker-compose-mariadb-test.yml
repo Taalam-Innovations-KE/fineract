@@ -37,7 +37,7 @@ services:
       JSON_CONFIG: '{ "interactiveLogin": true, "httpServer": "NettyWrapper", "tokenCallbacks": [ { "issuerId": "auth/realms/fineract", "tokenExpiry": 120, "requestMappings": [{ "requestParam": "scope", "match": "fineract", "claims": { "sub": "mifos", "scope": [ "test" ] } } ] } ] }'
 
   fineract:
-    image: fineract:latest
+    image: "${IMAGE_NAME:-fineract:latest}"
     user: "1000:1000"
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -30,17 +30,20 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 @Configuration
 @RequiredArgsConstructor
 public class TenantRuntimeSecurityConfiguration {
+
+    private static final PathPatternRequestMatcher.Builder API_MATCHER = PathPatternRequestMatcher.withDefaults();
 
     private final TaalamTenantRuntimeProperties properties;
 
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
     public SecurityFilterChain tenantRuntimeSecurityFilterChain(HttpSecurity http) throws Exception {
-        http.securityMatcher("/api/*/tenant-runtime/**").csrf(AbstractHttpConfigurer::disable)
+        http.securityMatcher(API_MATCHER.matcher("/api/*/tenant-runtime/**")).csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(STATELESS))
                 .addFilterBefore(new SharedSecretAuthFilter(properties), SecurityContextHolderFilter.class)
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());

@@ -1,0 +1,10 @@
+fineract:
+  security:
+    oauth2:
+      external:
+        enabled: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_ENABLED:false}
+        keycloak-base-url: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_KEYCLOAK_BASE_URL:}
+        audience: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_AUDIENCE:fineract}
+        username-claim: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_USERNAME_CLAIM:preferred_username}
+        service-client-claim: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_SERVICE_CLIENT_CLAIM:azp}
+        service-user-prefix: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_SERVICE_USER_PREFIX:svc-}

@@ -32,18 +32,41 @@ public class SecurityValidationConfig {
     @Value("${fineract.security.oauth2.enabled}")
     private Boolean oauthEnabled;
 
+    @Value("${fineract.security.oauth2.external.enabled:false}")
+    private Boolean externalOauthEnabled;
+
+    @Value("${fineract.security.2fa.enabled}")
+    private Boolean twoFactorEnabled;
+
     @PostConstruct
     public void validate() {
-        // NOTE: avoid NPE if these values are not set
-        if (!Boolean.TRUE.equals(basicAuthEnabled) && !Boolean.TRUE.equals(oauthEnabled)) {
+        final int enabledAuthenticationSchemes = countEnabledAuthenticationSchemes();
+        if (enabledAuthenticationSchemes == 0) {
             // NOTE: while we are already doing consistency checks we might as well cover this case; should not happen
             // as defaults are set in application.properties
             throw new IllegalArgumentException(
-                    "No authentication scheme selected. Please decide if you want to use basic OR OAuth2 authentication.");
+                    "No authentication scheme selected. Please decide if you want to use basic, OAuth2, or external OAuth2 authentication.");
         }
-        if (basicAuthEnabled && oauthEnabled) {
+        if (enabledAuthenticationSchemes > 1) {
             throw new IllegalArgumentException(
-                    "Too many authentication schemes selected. Please decide if you want to use basic OR OAuth2 authentication.");
+                    "Too many authentication schemes selected. Please decide if you want to use basic, OAuth2, or external OAuth2 authentication.");
         }
+        if (Boolean.TRUE.equals(externalOauthEnabled) && Boolean.TRUE.equals(twoFactorEnabled)) {
+            throw new IllegalArgumentException("External OAuth2 authentication cannot be combined with Fineract 2FA.");
+        }
+    }
+
+    private int countEnabledAuthenticationSchemes() {
+        int enabledAuthenticationSchemes = 0;
+        if (Boolean.TRUE.equals(basicAuthEnabled)) {
+            enabledAuthenticationSchemes++;
+        }
+        if (Boolean.TRUE.equals(oauthEnabled)) {
+            enabledAuthenticationSchemes++;
+        }
+        if (Boolean.TRUE.equals(externalOauthEnabled)) {
+            enabledAuthenticationSchemes++;
+        }
+        return enabledAuthenticationSchemes;
     }
 }

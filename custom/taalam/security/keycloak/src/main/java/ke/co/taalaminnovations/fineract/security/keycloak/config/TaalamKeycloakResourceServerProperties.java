@@ -18,6 +18,7 @@
  */
 package ke.co.taalaminnovations.fineract.security.keycloak.config;
 
+import java.util.List;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -33,11 +34,28 @@ public class TaalamKeycloakResourceServerProperties {
     private String usernameClaim = "preferred_username";
     private String serviceClientClaim = "azp";
     private String serviceUserPrefix = "svc-";
+    private Provisioning provisioning = new Provisioning();
 
     public String normalizedKeycloakBaseUrl() {
         if (keycloakBaseUrl == null) {
             return null;
         }
         return keycloakBaseUrl.endsWith("/") ? keycloakBaseUrl.substring(0, keycloakBaseUrl.length() - 1) : keycloakBaseUrl;
+    }
+
+    @Getter
+    @Setter
+    public static final class Provisioning {
+
+        private boolean enabled;
+        private String adminRealm = "master";
+        private String adminClientId;
+        private String adminClientSecret;
+        private boolean userEnabled = true;
+        private boolean emailVerified;
+        private boolean sendActionsEmail = true;
+        private long actionsEmailLifespanSeconds = 43_200L;
+        private boolean syncUsernameOnEmailMatch = true;
+        private List<String> requiredActions = List.of("UPDATE_PASSWORD");
     }
 }

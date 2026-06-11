@@ -16,16 +16,17 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+package ke.co.taalaminnovations.fineract.security.keycloak.service;
 
-dependencies {
-    implementation(project(':fineract-core'))
-    implementation(project(':fineract-provider'))
-    implementation(project(':fineract-security'))
-    implementation('org.keycloak:keycloak-admin-client:26.0.9')
-    implementation('org.springframework.boot:spring-boot-starter-oauth2-resource-server')
-    implementation('org.springframework.boot:spring-boot-starter-security')
-    implementation('org.springframework.boot:spring-boot-starter-web')
-    implementation('org.springframework:spring-tx')
-    compileOnly('org.springframework.boot:spring-boot-autoconfigure')
-    testImplementation('com.google.code.gson:gson')
+import org.keycloak.admin.client.Keycloak;
+import org.keycloak.admin.client.KeycloakBuilder;
+import org.springframework.stereotype.Component;
+
+@Component
+public class TaalamKeycloakAdminClientFactory {
+
+    Keycloak create(final String serverUrl, final String realm, final String clientId, final String clientSecret) {
+        return KeycloakBuilder.builder().serverUrl(serverUrl).realm(realm).grantType("client_credentials").clientId(clientId)
+                .clientSecret(clientSecret).build();
+    }
 }

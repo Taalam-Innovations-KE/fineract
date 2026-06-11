@@ -16,16 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+package ke.co.taalaminnovations.fineract.security.keycloak.service;
 
-dependencies {
-    implementation(project(':fineract-core'))
-    implementation(project(':fineract-provider'))
-    implementation(project(':fineract-security'))
-    implementation('org.keycloak:keycloak-admin-client:26.0.9')
-    implementation('org.springframework.boot:spring-boot-starter-oauth2-resource-server')
-    implementation('org.springframework.boot:spring-boot-starter-security')
-    implementation('org.springframework.boot:spring-boot-starter-web')
-    implementation('org.springframework:spring-tx')
-    compileOnly('org.springframework.boot:spring-boot-autoconfigure')
-    testImplementation('com.google.code.gson:gson')
+public record TaalamKeycloakUserProvisioningRequest(String tenantIdentifier, String username, String email, String firstName,
+        String lastName) {
 }

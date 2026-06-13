@@ -49,6 +49,8 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.crypto.factory.PasswordEncoderFactories;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtIssuerAuthenticationManagerResolver;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
@@ -126,6 +128,11 @@ public class TaalamKeycloakResourceServerSecurityConfiguration {
     @Bean
     public BearerTokenResolver keycloakBearerTokenResolver() {
         return new DefaultBearerTokenResolver();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return PasswordEncoderFactories.createDelegatingPasswordEncoder();
     }
 
     private AuthenticationManagerResolver<HttpServletRequest> jwtIssuerAuthenticationManagerResolver() {

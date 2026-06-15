@@ -23,6 +23,7 @@ import java.util.Collection;
 import ke.co.taalaminnovations.fineract.security.keycloak.config.TaalamKeycloakResourceServerProperties;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.infrastructure.security.data.FineractJwtAuthenticationToken;
+import org.apache.fineract.infrastructure.security.domain.PlatformUser;
 import org.apache.fineract.infrastructure.security.service.TenantAwareJpaPlatformUserDetailsService;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.lang.NonNull;
@@ -45,13 +46,14 @@ public class TaalamKeycloakJwtAuthenticationConverter implements Converter<Jwt, 
     @Override
     @NonNull
     public FineractJwtAuthenticationToken convert(@NonNull Jwt jwt) {
-        String username = resolveUsername(jwt);
-        if (isBlank(username)) {
+        ResolvedPrincipal principal = resolvePrincipal(jwt);
+        if (isBlank(principal.username())) {
             throw invalidToken("Token does not identify a Fineract user");
         }
 
         try {
-            UserDetails user = userDetailsService.loadUserByUsername(username);
+            UserDetails user = userDetailsService.loadUserByUsername(principal.username());
+            validateEmailBinding(jwt, user, principal);
             Collection<GrantedAuthority> authorities = new ArrayList<>(user.getAuthorities());
             return new FineractJwtAuthenticationToken(jwt, authorities, user);
         } catch (UsernameNotFoundException ex) {
@@ -59,18 +61,36 @@ public class TaalamKeycloakJwtAuthenticationConverter implements Converter<Jwt, 
         }
     }
 
-    private String resolveUsername(Jwt jwt) {
+    private ResolvedPrincipal resolvePrincipal(Jwt jwt) {
         String humanUsername = jwt.getClaimAsString(properties.getUsernameClaim());
         if (!isBlank(humanUsername)) {
-            return humanUsername;
+            return new ResolvedPrincipal(humanUsername.trim(), false);
         }
 
         String serviceClientId = jwt.getClaimAsString(properties.getServiceClientClaim());
         if (!isBlank(serviceClientId)) {
-            return properties.getServiceUserPrefix() + serviceClientId;
+            return new ResolvedPrincipal(properties.getServiceUserPrefix() + serviceClientId.trim(), true);
         }
 
-        return jwt.getSubject();
+        return new ResolvedPrincipal(null, false);
+    }
+
+    private void validateEmailBinding(Jwt jwt, UserDetails user, ResolvedPrincipal principal) {
+        if (!properties.isRequireEmailMatch() || principal.serviceClient()) {
+            return;
+        }
+        if (!(user instanceof PlatformUser platformUser)) {
+            throw invalidToken("Resolved Fineract user does not expose an email address");
+        }
+
+        String tokenEmail = jwt.getClaimAsString(properties.getEmailClaim());
+        if (isBlank(tokenEmail)) {
+            throw invalidToken("Token does not identify a Fineract user email");
+        }
+        String fineractEmail = platformUser.getEmail();
+        if (isBlank(fineractEmail) || !fineractEmail.trim().equalsIgnoreCase(tokenEmail.trim())) {
+            throw invalidToken("Token email does not match the Fineract user email");
+        }
     }
 
     private OAuth2AuthenticationException invalidToken(String message) {
@@ -83,5 +103,8 @@ public class TaalamKeycloakJwtAuthenticationConverter implements Converter<Jwt, 
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private record ResolvedPrincipal(String username, boolean serviceClient) {
     }
 }

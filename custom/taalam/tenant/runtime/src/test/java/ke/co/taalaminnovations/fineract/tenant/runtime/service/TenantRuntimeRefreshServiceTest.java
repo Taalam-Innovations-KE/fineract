@@ -19,23 +19,26 @@
 package ke.co.taalaminnovations.fineract.tenant.runtime.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.sql.Connection;
+import java.util.List;
 import javax.sql.DataSource;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRegistrationRequest;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRegistrationResponse;
 import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenant;
 import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenantConnection;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
+import org.apache.fineract.infrastructure.core.service.database.DatabasePasswordEncryptor;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseType;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseTypeResolver;
-import org.apache.fineract.infrastructure.core.service.database.DatabasePasswordEncryptor;
 import org.apache.fineract.infrastructure.core.service.database.RoutingDataSource;
 import org.apache.fineract.infrastructure.core.service.tenant.TenantDetailsService;
 import org.junit.jupiter.api.AfterEach;
@@ -51,6 +54,8 @@ class TenantRuntimeRefreshServiceTest {
     private final TenantDetailsService tenantDetailsService = mock(TenantDetailsService.class);
     private final RoutingDataSource routingDataSource = mock(RoutingDataSource.class);
     private final TenantRuntimeAuthenticationVerifier authenticationVerifier = mock(TenantRuntimeAuthenticationVerifier.class);
+    private final TenantIdentityProviderProvisioningService identityProviderProvisioningService = mock(
+            TenantIdentityProviderProvisioningService.class);
 
     @AfterEach
     void resetThreadLocalContext() {
@@ -77,8 +82,9 @@ class TenantRuntimeRefreshServiceTest {
         });
         when(dataSource.getConnection()).thenReturn(connection);
         when(authenticationVerifier.verifyIfEnabled(runtimeTenant)).thenReturn(true);
-        TenantRuntimeRefreshService underTest = new TenantRuntimeRefreshService(databasePasswordEncryptor, databaseTypeResolver, migrationService,
-                tenantStoreRegistrationService, cacheService, tenantDetailsService, routingDataSource, authenticationVerifier);
+        TenantRuntimeRefreshService underTest = new TenantRuntimeRefreshService(databasePasswordEncryptor, databaseTypeResolver,
+                migrationService, tenantStoreRegistrationService, cacheService, tenantDetailsService, routingDataSource,
+                authenticationVerifier, List.of(identityProviderProvisioningService));
 
         RuntimeTenantRegistrationResponse response = underTest.registerAndRefresh(request);
 
@@ -87,10 +93,30 @@ class TenantRuntimeRefreshServiceTest {
         assertThat(response.migrated()).isTrue();
         assertThat(response.refreshed()).isTrue();
         assertThat(response.authenticationVerified()).isTrue();
+        verify(identityProviderProvisioningService).ensureTenant(request);
         verify(migrationService).migrate(any(FineractPlatformTenant.class));
         verify(tenantStoreRegistrationService).register(eq(request), eq("encrypted-password"), eq("master-password-hash"));
         verify(cacheService, atLeastOnce()).clearTenantRuntimeCaches();
         verify(authenticationVerifier).verifyIfEnabled(runtimeTenant);
+    }
+
+    @Test
+    void registerAndRefreshFailsBeforeMigrationWhenIdentityProviderProvisioningFails() {
+        RuntimeTenantRegistrationRequest request = new RuntimeTenantRegistrationRequest("new_ke", "New Kenya Tenant", "Africa/Nairobi",
+                "POSTGRESQL", "localhost", 5432, "fineract_new_ke", "fineract_new_ke", "tenant-password", null);
+        when(databaseTypeResolver.databaseType()).thenReturn(DatabaseType.POSTGRESQL);
+        org.mockito.Mockito.doThrow(new IllegalStateException("keycloak unavailable")).when(identityProviderProvisioningService)
+                .ensureTenant(request);
+        TenantRuntimeRefreshService underTest = new TenantRuntimeRefreshService(databasePasswordEncryptor, databaseTypeResolver,
+                migrationService, tenantStoreRegistrationService, cacheService, tenantDetailsService, routingDataSource,
+                authenticationVerifier, List.of(identityProviderProvisioningService));
+
+        assertThatThrownBy(() -> underTest.registerAndRefresh(request)).isInstanceOf(TenantRuntimeException.class)
+                .hasMessageContaining("Tenant identity provider provisioning failed for tenant new_ke");
+
+        verify(identityProviderProvisioningService).ensureTenant(request);
+        verifyNoInteractions(migrationService, tenantStoreRegistrationService, tenantDetailsService, routingDataSource,
+                authenticationVerifier);
     }
 
     private FineractPlatformTenant tenant(String identifier, Long connectionId) {

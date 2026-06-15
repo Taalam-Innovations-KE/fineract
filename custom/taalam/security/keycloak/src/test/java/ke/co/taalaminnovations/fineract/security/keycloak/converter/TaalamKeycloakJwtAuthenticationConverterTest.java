@@ -20,16 +20,21 @@ package ke.co.taalaminnovations.fineract.security.keycloak.converter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import ke.co.taalaminnovations.fineract.security.keycloak.config.TaalamKeycloakResourceServerProperties;
 import org.apache.fineract.infrastructure.security.data.FineractJwtAuthenticationToken;
+import org.apache.fineract.infrastructure.security.domain.PlatformUser;
 import org.apache.fineract.infrastructure.security.service.TenantAwareJpaPlatformUserDetailsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -49,9 +54,12 @@ class TaalamKeycloakJwtAuthenticationConverterTest {
 
     @Test
     void mapsHumanTokenByPreferredUsernameAndUsesAppUserAuthorities() {
-        UserDetails user = User.withUsername("jane").password("unused").authorities("READ_LOAN").build();
+        PlatformUser user = mock(PlatformUser.class);
+        when(user.getEmail()).thenReturn("jane@example.org");
+        Collection<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("READ_LOAN"));
+        doReturn(authorities).when(user).getAuthorities();
         when(userDetailsService.loadUserByUsername("jane")).thenReturn(user);
-        Jwt jwt = jwtBuilder().claim("preferred_username", "jane").subject("keycloak-id").build();
+        Jwt jwt = jwtBuilder().claim("preferred_username", "jane").claim("email", "jane@example.org").subject("keycloak-id").build();
 
         FineractJwtAuthenticationToken authentication = underTest.convert(jwt);
 
@@ -71,20 +79,35 @@ class TaalamKeycloakJwtAuthenticationConverterTest {
     }
 
     @Test
-    void fallsBackToSubjectWhenUsernameAndServiceClientClaimsAreAbsent() {
-        UserDetails user = User.withUsername("legacy-subject").password("unused").authorities("READ_CLIENT").build();
-        when(userDetailsService.loadUserByUsername("legacy-subject")).thenReturn(user);
+    void rejectsTokenWhenUsernameAndServiceClientClaimsAreAbsent() {
         Jwt jwt = jwtBuilder().subject("legacy-subject").build();
 
-        FineractJwtAuthenticationToken authentication = underTest.convert(jwt);
+        assertThatThrownBy(() -> underTest.convert(jwt)).isInstanceOf(OAuth2AuthenticationException.class);
+    }
 
-        assertThat(authentication.getPrincipal()).isSameAs(user);
+    @Test
+    void rejectsHumanTokenWithoutEmailClaim() {
+        PlatformUser user = mock(PlatformUser.class);
+        when(userDetailsService.loadUserByUsername("jane")).thenReturn(user);
+        Jwt jwt = jwtBuilder().claim("preferred_username", "jane").build();
+
+        assertThatThrownBy(() -> underTest.convert(jwt)).isInstanceOf(OAuth2AuthenticationException.class);
+    }
+
+    @Test
+    void rejectsHumanTokenWhenEmailDoesNotMatchFineractUser() {
+        PlatformUser user = mock(PlatformUser.class);
+        when(user.getEmail()).thenReturn("jane@example.org");
+        when(userDetailsService.loadUserByUsername("jane")).thenReturn(user);
+        Jwt jwt = jwtBuilder().claim("preferred_username", "jane").claim("email", "wrong@example.org").build();
+
+        assertThatThrownBy(() -> underTest.convert(jwt)).isInstanceOf(OAuth2AuthenticationException.class);
     }
 
     @Test
     void rejectsUnknownFineractUser() {
         when(userDetailsService.loadUserByUsername("missing")).thenThrow(new UsernameNotFoundException("missing"));
-        Jwt jwt = jwtBuilder().claim("preferred_username", "missing").build();
+        Jwt jwt = jwtBuilder().claim("preferred_username", "missing").claim("email", "missing@example.org").build();
 
         assertThatThrownBy(() -> underTest.convert(jwt)).isInstanceOf(OAuth2AuthenticationException.class);
     }

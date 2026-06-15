@@ -24,15 +24,16 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.zone.ZoneRulesException;
+import java.util.List;
 import javax.sql.DataSource;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRegistrationRequest;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRegistrationResponse;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenant;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
+import org.apache.fineract.infrastructure.core.service.database.DatabasePasswordEncryptor;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseType;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseTypeResolver;
-import org.apache.fineract.infrastructure.core.service.database.DatabasePasswordEncryptor;
 import org.apache.fineract.infrastructure.core.service.database.RoutingDataSource;
 import org.apache.fineract.infrastructure.core.service.tenant.TenantDetailsService;
 import org.springframework.stereotype.Service;
@@ -50,9 +51,11 @@ public class TenantRuntimeRefreshService {
     private final TenantDetailsService tenantDetailsService;
     private final RoutingDataSource routingDataSource;
     private final TenantRuntimeAuthenticationVerifier authenticationVerifier;
+    private final List<TenantIdentityProviderProvisioningService> identityProviderProvisioningServices;
 
     public RuntimeTenantRegistrationResponse registerAndRefresh(RuntimeTenantRegistrationRequest request) {
         RuntimeTenantRegistrationRequest normalizedRequest = normalizeAndValidate(request);
+        ensureIdentityProviderTenant(normalizedRequest);
         boolean tenantAlreadyRegistered = tenantStoreRegistrationService.isTenantRegistered(normalizedRequest.tenantIdentifier());
         FineractPlatformTenant migrationTenant = tenantAlreadyRegistered ? loadTenant(normalizedRequest.tenantIdentifier())
                 : transientTenant(normalizedRequest);
@@ -73,6 +76,17 @@ public class TenantRuntimeRefreshService {
                 registered, migrated, true, authenticationVerified, "READY", Instant.now());
     }
 
+    private void ensureIdentityProviderTenant(RuntimeTenantRegistrationRequest request) {
+        for (TenantIdentityProviderProvisioningService service : identityProviderProvisioningServices) {
+            try {
+                service.ensureTenant(request);
+            } catch (RuntimeException e) {
+                throw new TenantRuntimeException(Response.Status.BAD_GATEWAY,
+                        "Tenant identity provider provisioning failed for tenant " + request.tenantIdentifier(), e);
+            }
+        }
+    }
+
     private RuntimeTenantRegistrationRequest normalizeAndValidate(RuntimeTenantRegistrationRequest request) {
         if (request == null) {
             throw new TenantRuntimeException(Response.Status.BAD_REQUEST, "Tenant runtime request is required");
@@ -90,8 +104,8 @@ public class TenantRuntimeRefreshService {
         String databaseName = requireText(request.databaseName(), "database_name");
         String runtimeUsername = requireText(request.runtimeUsername(), "runtime_username");
         String runtimePassword = requireText(request.runtimePassword(), "runtime_password");
-        return new RuntimeTenantRegistrationRequest(tenantIdentifier, displayName, timezone, databaseType.name(), databaseHost, databasePort,
-                databaseName, runtimeUsername, runtimePassword, request.connectionParameters());
+        return new RuntimeTenantRegistrationRequest(tenantIdentifier, displayName, timezone, databaseType.name(), databaseHost,
+                databasePort, databaseName, runtimeUsername, runtimePassword, request.connectionParameters());
     }
 
     private DatabaseType normalizeDatabaseType(String requestedDatabaseType) {

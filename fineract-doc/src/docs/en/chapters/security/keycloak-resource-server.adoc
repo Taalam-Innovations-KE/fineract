@@ -1,0 +1,510 @@
+= External Keycloak Resource Server
+
+This manual describes the Fineract external Keycloak resource server integration. It is written for developers and operators who need to run, configure, test, or extend the custom Keycloak module.
+
+The feature lets Fineract accept Keycloak bearer tokens while keeping Fineract as the source of truth for users, roles, permissions, offices, and tenant access. Keycloak authenticates identity. Fineract authorizes behavior.
+
+== What the Feature Adds
+
+The custom Keycloak module adds an external OAuth2 resource server mode under the `fineract.security.oauth2.external` configuration namespace.
+
+When enabled, Fineract:
+
+* treats protected API requests as stateless bearer-token requests;
+* validates the token issuer against the configured Keycloak base URL;
+* maps the issuer realm to the Fineract tenant identifier;
+* validates the configured token audience;
+* resolves the Fineract username and email from token claims;
+* loads the matching Fineract user and verifies the token email matches the local Fineract email;
+* uses the local Fineract user's authorities;
+* creates or repairs the Keycloak tenant realm during tenant runtime registration;
+* optionally provisions Fineract-created users into Keycloak after the local user transaction commits.
+
+The implementation is intentionally not a Keycloak-role-to-Fineract-permission mapper. Keycloak groups, realm roles, and client roles do not grant Fineract permissions. A request is authorized only by the authorities assigned to the matching Fineract user.
+
+== Runtime Request Flow
+
+The request flow for a protected API call is:
+
+. Client calls Fineract with `Authorization: Bearer <token>`.
+. Fineract extracts the token issuer claim.
+. The issuer must start with `<keycloak-base-url>/realms/`.
+. The path segment after `/realms/` becomes the Fineract tenant identifier.
+. Fineract loads that tenant and creates or reuses a JWT authentication manager for the issuer.
+. Spring Security validates the JWT using Keycloak issuer metadata and JWKs.
+. Fineract validates the configured audience, normally `fineract`.
+. Fineract resolves a username from the configured username claim and loads the matching local Fineract user.
+. Fineract verifies the configured email claim matches the local Fineract user email.
+. The authenticated principal receives the local Fineract user's authorities.
+. Normal Fineract permission checks continue.
+
+For example, with this issuer:
+
+[source,text]
+----
+http://keycloak:8080/realms/default
+----
+
+Fineract resolves tenant `default`.
+
+IMPORTANT: `keycloak-base-url` must match the issuer value that appears inside the token from Fineract's point of view. In Docker, a token issued through `+http://localhost:18080/realms/default+` will not match a Fineract configuration of `+http://keycloak:8080+`.
+
+== Authentication and Permission Mapping
+
+The default principal lookup order is:
+
+. `preferred_username`
+. service client claim, default `azp`, prefixed with `svc-`
+
+Human users must use the configured username claim, normally `preferred_username`, and the configured email claim, normally `email`. Service clients can be represented by local Fineract users named from the configured prefix plus the client ID. For example, client ID `customer-channel` maps to local Fineract username `svc-customer-channel` when the default prefix is used.
+
+After the username is resolved, Fineract loads the local user through the tenant-aware user details service. For human users, the token email must match the Fineract user email case-insensitively. If there is no matching Fineract user, or the email claim is missing or different, authentication fails with an invalid bearer token.
+
+This design means:
+
+* Keycloak owns credential verification and token issuance.
+* Fineract owns user existence, office assignment, role assignment, and permissions.
+* Changing a Keycloak role does not change Fineract authorization.
+* Changing a Fineract role takes effect through the normal Fineract authority model.
+
+== Configuration
+
+The module configuration lives in `custom/taalam/security/keycloak/src/main/resources/application.yaml`.
+
+=== Core Authentication Properties
+
+[cols="2,1,3", options="header"]
+|===
+|Setting |Default |Purpose
+
+|`fineract.security.oauth2.external.enabled`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_ENABLED`
+|`false`
+|Enables the external Keycloak resource server mode.
+
+|`fineract.security.oauth2.external.keycloak-base-url`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_KEYCLOAK_BASE_URL`
+|empty
+|Trusted Keycloak base URL used to validate issuers and call the admin API.
+
+|`fineract.security.oauth2.external.audience`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_AUDIENCE`
+|`fineract`
+|Required JWT audience.
+
+|`fineract.security.oauth2.external.username-claim`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_USERNAME_CLAIM`
+|`preferred_username`
+|Claim used for human-user Fineract username lookup.
+
+|`fineract.security.oauth2.external.email-claim`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_EMAIL_CLAIM`
+|`email`
+|Claim used to bind a human Keycloak token to the local Fineract user email.
+
+|`fineract.security.oauth2.external.require-email-match`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_REQUIRE_EMAIL_MATCH`
+|`true`
+|Rejects human-user tokens when the token email does not match the local Fineract user email.
+
+|`fineract.security.oauth2.external.service-client-claim`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_SERVICE_CLIENT_CLAIM`
+|`azp`
+|Claim used to identify service-client tokens when no human username is present.
+
+|`fineract.security.oauth2.external.service-user-prefix`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_SERVICE_USER_PREFIX`
+|`svc-`
+|Prefix added to service-client IDs before local Fineract user lookup.
+|===
+
+=== Provisioning Properties
+
+[cols="2,1,3", options="header"]
+|===
+|Setting |Default |Purpose
+
+|`fineract.security.oauth2.external.provisioning.enabled`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ENABLED`
+|`false`
+|Enables post-commit provisioning of Fineract-created users into Keycloak.
+
+|`fineract.security.oauth2.external.provisioning.admin-realm`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ADMIN_REALM`
+|`master`
+|Realm used by the Keycloak admin service account.
+
+|`fineract.security.oauth2.external.provisioning.admin-client-id`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ADMIN_CLIENT_ID`
+|empty
+|Confidential client ID used for Keycloak admin operations.
+
+|`fineract.security.oauth2.external.provisioning.admin-client-secret`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ADMIN_CLIENT_SECRET`
+|empty
+|Secret for the admin client.
+
+|`fineract.security.oauth2.external.provisioning.user-enabled`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_USER_ENABLED`
+|`true`
+|Whether provisioned Keycloak users are enabled.
+
+|`fineract.security.oauth2.external.provisioning.email-verified`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_EMAIL_VERIFIED`
+|`false`
+|Whether provisioned Keycloak users are marked email verified.
+
+|`fineract.security.oauth2.external.provisioning.send-actions-email`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_SEND_ACTIONS_EMAIL`
+|`true`
+|Whether Keycloak sends an action email after create or update.
+
+|`fineract.security.oauth2.external.provisioning.actions-email-lifespan-seconds`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ACTIONS_EMAIL_LIFESPAN_SECONDS`
+|`43200`
+|Action email validity period.
+
+|`fineract.security.oauth2.external.provisioning.sync-username-on-email-match`
+
+`FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_SYNC_USERNAME_ON_EMAIL_MATCH`
+|`true`
+|Updates the Keycloak username when an existing Keycloak user is matched by email.
+
+|`fineract.security.oauth2.external.provisioning.required-actions`
+
+Configured in YAML
+|`UPDATE_PASSWORD`
+|Required Keycloak actions assigned to provisioned users.
+|===
+
+=== Minimal Container Environment
+
+[source,bash]
+----
+FINERACT_SECURITY_BASICAUTH_ENABLED=false
+FINERACT_SECURITY_OAUTH_ENABLED=false
+FINERACT_SECURITY_2FA_ENABLED=false
+FINERACT_SECURITY_OAUTH2_EXTERNAL_ENABLED=true
+FINERACT_SECURITY_OAUTH2_EXTERNAL_KEYCLOAK_BASE_URL=http://keycloak:8080
+FINERACT_SECURITY_OAUTH2_EXTERNAL_AUDIENCE=fineract
+FINERACT_SECURITY_OAUTH2_EXTERNAL_EMAIL_CLAIM=email
+FINERACT_SECURITY_OAUTH2_EXTERNAL_REQUIRE_EMAIL_MATCH=true
+
+FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ENABLED=true
+FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ADMIN_REALM=master
+FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ADMIN_CLIENT_ID=fineract-admin
+FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ADMIN_CLIENT_SECRET=<secret>
+FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_SEND_ACTIONS_EMAIL=true
+----
+
+NOTE: The admin realm can be `master` or a tenant realm, depending on where the admin service account is created. The service account must have permission to manage users in each target tenant realm.
+
+== Keycloak Configuration
+
+Use one Keycloak realm per Fineract tenant. The realm name must equal the Fineract tenant identifier.
+
+When external OAuth mode is enabled, tenant runtime registration creates or repairs the matching Keycloak realm before the tenant registration returns `READY`. For tenant `default`, Fineract ensures realm `default`.
+
+If Keycloak is unavailable, or the configured admin service account cannot create realms, manage clients, or manage users, tenant registration fails and the tenant is not reported as ready.
+
+=== Automatic Tenant Realm Provisioning
+
+During `POST /tenant-runtime/register-and-refresh`, Fineract ensures the tenant realm has:
+
+* realm enabled;
+* `editUsernameAllowed=true`;
+* login with email allowed;
+* duplicate emails disabled;
+* OpenID Connect client named from the configured audience, default `fineract`;
+* access-token audience mapper for the configured audience;
+* access-token username mapper for the configured username claim;
+* access-token email mapper for the configured email claim.
+
+=== Token Client
+
+Fineract creates or repairs a confidential OpenID Connect client named `fineract` by default:
+
+* Client authentication enabled.
+* Direct access grants enabled if password grant is used for local testing.
+* Standard flow enabled if browser login flows will be used.
+* Client secret recorded for test token requests.
+* Audience mapper that adds `fineract` to the access-token `aud` claim.
+* Username and email mappers that add the configured claims to access tokens.
+
+The audience mapper is required because Fineract rejects tokens that do not contain the configured audience. The email mapper is required because human-user authentication rejects tokens whose email is missing or does not match the local Fineract user email.
+
+=== Admin Service Account Client
+
+Create a confidential OpenID Connect client for administration, for example `fineract-admin`:
+
+* Service accounts enabled.
+* Client authentication enabled.
+* Standard flow and direct access grants are not required.
+* Client secret configured in Fineract.
+* Service account has permission to create realms.
+* Service account has permission to manage realms and clients in each target tenant realm.
+* Service account assigned these `realm-management` client roles for user provisioning in each target tenant realm:
+  * `manage-users`
+  * `view-users`
+  * `query-users`
+
+=== Username Sync Requirement
+
+If `sync-username-on-email-match=true`, Keycloak must allow username edits in the target realm. Tenant realm provisioning sets this automatically.
+
+[source,bash]
+----
+/opt/keycloak/bin/kcadm.sh update realms/default -s editUsernameAllowed=true
+----
+
+Without this setting, Keycloak returns HTTP 400 when Fineract tries to update the username of an existing email-matched user.
+
+=== Action Email Requirement
+
+For Keycloak to email a user a setup link:
+
+* SMTP must be configured in the Keycloak realm.
+* `send-actions-email=true` must be configured in Fineract.
+* `required-actions` must include at least `UPDATE_PASSWORD`.
+* The user must have a valid email address.
+
+When provisioning is enabled, Fineract suppresses its local password email and relies on Keycloak action email instead.
+
+== User Provisioning Behavior
+
+Provisioning runs after the Fineract user transaction commits.
+
+When a Fineract user is created:
+
+. Fineract creates the local `m_appuser` and role mappings.
+. After commit, Fineract builds a Keycloak provisioning request with tenant, username, email, first name, and last name.
+. If provisioning is disabled, no Keycloak call is made.
+. If tenant, username, or email is blank, provisioning is skipped and a warning is logged.
+. Fineract searches Keycloak by exact email.
+. If one email match exists:
+  * Keycloak user is updated when username sync is enabled.
+  * Required actions are set.
+  * Action email is sent when enabled.
+. If no email match exists, Fineract searches by username.
+. If username exists, that Keycloak user is updated.
+. If no user exists, Fineract creates the Keycloak user.
+
+Provisioning errors are logged after commit and do not roll back the Fineract user. This avoids reversing successful local user management because of an external identity-provider outage. Operators should monitor for `Keycloak user provisioning failed` log entries.
+
+== Local Developer Smoke Test
+
+The safest local smoke test uses isolated containers and internal Docker DNS names. Do not reuse unrelated local containers.
+
+=== Start Keycloak
+
+[source,bash]
+----
+docker run --name fineract-keycloak-e2e-keycloak \
+  --network fineract-keycloak-e2e-net \
+  -p 18080:8080 \
+  -e KEYCLOAK_ADMIN=admin \
+  -e KEYCLOAK_ADMIN_PASSWORD=admin \
+  quay.io/keycloak/keycloak:26.6.3 start-dev
+----
+
+=== Bootstrap Admin Credentials
+
+[source,bash]
+----
+docker exec fineract-keycloak-e2e-keycloak /opt/keycloak/bin/kcadm.sh \
+  config credentials --server http://localhost:8080 --realm master \
+  --user admin --password admin
+----
+
+Create the configured admin service-account client, for example `fineract-admin`, in the admin realm. Grant it enough admin permissions to create realms, manage tenant realm clients, and manage tenant realm users.
+
+=== Register or Refresh the Tenant
+
+Call tenant runtime registration with the target tenant details. In external OAuth mode, this creates or repairs the matching Keycloak realm before returning `READY`.
+
+[source,bash]
+----
+curl -ksS \
+  -H "X-Tenant-Runtime-Secret: ${TAALAM_TENANT_RUNTIME_SHARED_SECRET}" \
+  -H "Content-Type: application/json" \
+  --data '{
+    "tenant_identifier": "default",
+    "display_name": "Default",
+    "timezone": "Africa/Nairobi",
+    "database_type": "POSTGRESQL",
+    "database_host": "<database-host>",
+    "database_port": 5432,
+    "database_name": "<tenant-database>",
+    "runtime_username": "<tenant-db-user>",
+    "runtime_password": "<tenant-db-password>"
+  }' \
+  "https://localhost:18443/fineract-provider/api/v1/tenant-runtime/register-and-refresh"
+----
+
+Verify the realm exists:
+
+[source,bash]
+----
+docker exec fineract-keycloak-e2e-keycloak /opt/keycloak/bin/kcadm.sh \
+  get realms/default --fields realm,enabled,editUsernameAllowed
+----
+
+Expected result: `realm` is `default`, `enabled` is `true`, and `editUsernameAllowed` is `true`.
+
+Fineract local user `mifos` must also exist in Keycloak with the same username and email for token testing.
+
+=== Request Token from Inside the Docker Network
+
+The token issuer must be `http://keycloak:8080/realms/default` if Fineract is configured with `http://keycloak:8080`.
+
+[source,bash]
+----
+docker exec fineract-keycloak-e2e-fineract sh -lc \
+  "wget -qO- --header='Content-Type: application/x-www-form-urlencoded' \
+  --post-data='grant_type=password&client_id=fineract&client_secret=<fineract-client-secret>&username=mifos&password=password' \
+  http://keycloak:8080/realms/default/protocol/openid-connect/token"
+----
+
+Copy the `access_token` value and call Fineract:
+
+[source,bash]
+----
+curl -ksS \
+  -H "Authorization: Bearer ${TOKEN}" \
+  "https://localhost:18443/fineract-provider/api/v1/users/template?tenantIdentifier=default"
+----
+
+Expected result: HTTP 200. A 403 means authentication worked but the local Fineract user lacks permission.
+
+=== Verify Provisioning
+
+Create a Fineract user:
+
+[source,bash]
+----
+curl -ksS \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  --data '{
+    "username": "jane-e2e",
+    "firstname": "Jane",
+    "lastname": "Provisioned",
+    "email": "jane.e2e@example.org",
+    "officeId": 1,
+    "roles": [1],
+    "sendPasswordToEmail": false,
+    "password": "A1b2c3d4e5f$",
+    "repeatPassword": "A1b2c3d4e5f$"
+  }' \
+  "https://localhost:18443/fineract-provider/api/v1/users?tenantIdentifier=default"
+----
+
+Verify Keycloak:
+
+[source,bash]
+----
+docker exec fineract-keycloak-e2e-keycloak /opt/keycloak/bin/kcadm.sh \
+  get users -r default -q email=jane.e2e@example.org \
+  --fields id,username,email,enabled,emailVerified,requiredActions
+----
+
+Expected result:
+
+* exactly one Keycloak user;
+* `username` is `jane-e2e`;
+* `enabled` is `true`;
+* `emailVerified` follows Fineract provisioning configuration;
+* `requiredActions` contains `UPDATE_PASSWORD`.
+
+=== Verify Email-Match Username Sync
+
+. Pre-create a Keycloak user with email `jane.sync@example.org` and username `old-jane-sync`.
+. Create a Fineract user with username `jane-sync-e2e` and the same email.
+. Query Keycloak by email.
+
+Expected result: the Keycloak user keeps the same ID but username becomes `jane-sync-e2e`.
+
+== Troubleshooting
+
+[cols="1,2,2", options="header"]
+|===
+|Symptom |Likely cause |Fix
+
+|HTTP 401 from Fineract
+|Issuer, audience, signature, tenant, or local user lookup failed.
+|Check token `iss`, `aud`, JWK reachability, realm name, local Fineract username, and email.
+
+|HTTP 403 from Fineract
+|Authentication succeeded but Fineract permissions denied the action.
+|Assign the correct Fineract role and permissions to the local user.
+
+|`Untrusted issuer`
+|Token issuer does not start with configured `keycloak-base-url` plus `/realms/`.
+|Request tokens using the same Keycloak URL that Fineract trusts.
+
+|`Token does not identify a Fineract user`
+|Token lacks the configured username claim for a human user or the configured service-client claim for a service user.
+|Configure the username claim or create the expected local service user.
+
+|`Token email does not match the Fineract user email`
+|The configured token email claim is missing or different from the local Fineract user email.
+|Ensure the Keycloak user email matches the Fineract user email and the tenant client emits the configured email claim.
+
+|Tenant registration fails with identity-provider provisioning error
+|Keycloak is unavailable or the admin service account lacks realm/client/user management permissions.
+|Check Keycloak reachability, admin client secret, and assigned `realm-management` permissions.
+
+|Provisioning skipped
+|Provisioning disabled or tenant, username, or email is blank.
+|Check `FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ENABLED` and user payload fields.
+
+|Provisioning fails with HTTP 400 during email match
+|Keycloak realm does not allow username edits.
+|Run tenant runtime registration again to repair the realm or set `editUsernameAllowed=true` manually.
+
+|No Keycloak setup email
+|SMTP not configured, action email disabled, or required actions empty.
+|Configure Keycloak SMTP and keep `send-actions-email=true`.
+
+|Fineract starts but user creation fails because password encoder is missing
+|External security mode is active without a `PasswordEncoder` bean.
+|Use a build containing the external-mode password encoder fix.
+|===
+
+== Developer Extension Notes
+
+When extending the integration, preserve these invariants:
+
+* Fineract permissions remain authoritative.
+* A Keycloak token must not grant permissions unless the matching Fineract user has them.
+* Human-user tokens must bind by username and matching email.
+* Tenant registration in external OAuth mode must ensure the matching Keycloak realm before returning `READY`.
+* Provisioning must run after local commit.
+* Provisioning failure must be visible in logs.
+* Tenant realm names must continue to map exactly to Fineract tenant identifiers.
+* Token issuer and configured Keycloak base URL must be compared strictly.
+
+Before merging changes, run:
+
+[source,bash]
+----
+./gradlew :custom:taalam:security:keycloak:test
+./gradlew :custom:taalam:tenant:runtime:test
+./gradlew :fineract-doc:asciidoctorPdf
+----

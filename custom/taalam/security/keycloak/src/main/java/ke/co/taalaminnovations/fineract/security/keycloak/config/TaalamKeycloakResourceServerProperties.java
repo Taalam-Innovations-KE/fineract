@@ -32,6 +32,8 @@ public class TaalamKeycloakResourceServerProperties {
     private String keycloakBaseUrl;
     private String audience = "fineract";
     private String usernameClaim = "preferred_username";
+    private String emailClaim = "email";
+    private boolean requireEmailMatch = true;
     private String serviceClientClaim = "azp";
     private String serviceUserPrefix = "svc-";
     private Provisioning provisioning = new Provisioning();

@@ -116,7 +116,7 @@ asciidoctorPdf {
     baseDir 'src/docs'
     sourceDir 'src/docs'
     sources {
-        include('index.adoc')
+        include('index.adoc', 'keycloak-developer-operating-manual.adoc')
     }
     outputDir 'build/docs/pdf'
 

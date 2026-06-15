@@ -6,6 +6,8 @@ fineract:
         keycloak-base-url: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_KEYCLOAK_BASE_URL:}
         audience: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_AUDIENCE:fineract}
         username-claim: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_USERNAME_CLAIM:preferred_username}
+        email-claim: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_EMAIL_CLAIM:email}
+        require-email-match: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_REQUIRE_EMAIL_MATCH:true}
         service-client-claim: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_SERVICE_CLIENT_CLAIM:azp}
         service-user-prefix: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_SERVICE_USER_PREFIX:svc-}
         provisioning:

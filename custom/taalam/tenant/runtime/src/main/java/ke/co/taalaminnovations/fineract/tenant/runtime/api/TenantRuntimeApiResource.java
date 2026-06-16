@@ -50,18 +50,19 @@ public class TenantRuntimeApiResource {
             RuntimeTenantRegistrationRequest request = objectMapper.readValue(requestBody, RuntimeTenantRegistrationRequest.class);
             return objectMapper.writeValueAsString(tenantRuntimeRefreshService.registerAndRefresh(request));
         } catch (TenantRuntimeException e) {
-            throw toWebApplicationException(e.getStatus(), e.getMessage());
+            throw toWebApplicationException(e.getStatus(), e.getMessage(), e);
         } catch (JsonProcessingException e) {
-            throw toWebApplicationException(Response.Status.BAD_REQUEST, "Invalid tenant runtime request JSON");
+            throw toWebApplicationException(Response.Status.BAD_REQUEST, "Invalid tenant runtime request JSON", e);
         }
     }
 
-    private WebApplicationException toWebApplicationException(Response.Status status, String message) {
+    private WebApplicationException toWebApplicationException(Response.Status status, String message, Throwable cause) {
         try {
             String body = objectMapper.writeValueAsString(Map.of("status", status.getStatusCode(), "message", message));
-            return new WebApplicationException(Response.status(status).type(MediaType.APPLICATION_JSON).entity(body).build());
+            return new WebApplicationException(message, cause, Response.status(status).type(MediaType.APPLICATION_JSON).entity(body).build());
         } catch (JsonProcessingException e) {
-            return new WebApplicationException(message, status);
+            e.addSuppressed(cause);
+            return new WebApplicationException(message, e, status);
         }
     }
 }

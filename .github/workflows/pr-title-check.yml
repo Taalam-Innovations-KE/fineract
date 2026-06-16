@@ -1,4 +1,4 @@
-name: Fineract PR Compliance
+name: Fineract PR Convention Advisory
 
 on:
   pull_request:
@@ -8,21 +8,28 @@ permissions:
   pull-requests: read
 
 jobs:
-  verify-title:
-    name: Validate Jira Ticket ID
+  advise-title:
+    name: Check PR title convention
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Verify Title Format
+      - name: Check title format
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           title="$PR_TITLE"
-          regex="^FINERACT-[0-9]+: "
+          conventional_regex="^(revert: )?(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([A-Za-z0-9._/-]+\))?!?: .+"
+          jira_regex="[A-Z][A-Z0-9]+-[0-9]+"
 
-          if [[ ! "$title" =~ $regex ]]; then
-            echo "::error::PR title '$title' is invalid."
-            echo "::error::It must start with a Jira Ticket ID (e.g., 'FINERACT-123: Description...')."
-            exit 1
+          if [[ ! "$title" =~ $conventional_regex ]]; then
+            echo "::warning::PR title '$title' does not follow the conventional commit style."
+            echo "::warning::Expected examples: 'feat(auth): add keycloak provisioning' or 'fix(ci): gate sonar by configuration'."
+          else
+            echo "Success: PR title follows the conventional commit style."
           fi
-          echo "Success: PR title matches the required format."
+
+          if [[ ! "$title" =~ $jira_regex ]]; then
+            echo "::notice::No Jira work item key found in the PR title. Include a key like 'ABC-123' to link this PR to Jira."
+          else
+            echo "Success: PR title includes a Jira work item key."
+          fi

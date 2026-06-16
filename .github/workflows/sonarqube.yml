@@ -1,13 +1,17 @@
 name: Fineract Sonarqube
 on:
   workflow_call:
+    inputs:
+      sonar-organization:
+        required: false
+        type: string
+      sonar-project-key:
+        required: false
+        type: string
+      sonar-host-url:
+        required: false
+        type: string
     secrets:
-      SONAR_ORGANIZATION:
-        required: false
-      SONAR_PROJECT_KEY:
-        required: false
-      SONAR_HOST_URL:
-        required: false
       SONARCLOUD_TOKEN:
         required: false
       DEVELOCITY_ACCESS_KEY:
@@ -29,9 +33,9 @@ jobs:
     timeout-minutes: 90
     env:
         TZ: Asia/Kolkata
-        SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
-        SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        SONAR_ORGANIZATION: ${{ inputs.sonar-organization }}
+        SONAR_PROJECT_KEY: ${{ inputs.sonar-project-key }}
+        SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
         DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
@@ -53,5 +57,15 @@ jobs:
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
         with:
           validate-wrappers: true
+      - name: Validate SonarQube configuration
+        run: |
+          missing=0
+          for name in SONAR_ORGANIZATION SONAR_PROJECT_KEY SONAR_HOST_URL SONAR_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is required when ENABLE_SONARQUBE is true."
+              missing=1
+            fi
+          done
+          exit "$missing"
       - name: Sonar
         run: ./gradlew --no-daemon --console=plain -Dsonar.verbose=true -Dsonar.token=$SONAR_TOKEN -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.organization=$SONAR_ORGANIZATION -Dsonar.projectKey=$SONAR_PROJECT_KEY -Dsonar.java.binaries=$JAVA_BINARIES --info --stacktrace sonar -x buildJavaSdk

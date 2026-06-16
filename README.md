@@ -1,5 +1,9 @@
 # Apache Fineract
 
+This repository is a Taalam-managed fork of Apache Fineract. See
+[TAALAM_DEVELOPMENT_POLICY.md](TAALAM_DEVELOPMENT_POLICY.md) for fork-specific
+CI, proprietary module, and Git/Jira workflow policy.
+
 <!-- TODO Reactivate when there is a working CI-CD instance: [![Swagger Validation](https://validator.swagger.io/validator?url=https://sandbox.mifos.community/fineract-provider/swagger-ui/fineract.yaml)](https://validator.swagger.io/validator/debug?url=https://sandbox.mifos.community/fineract-provider/swagger-ui/fineract.yaml) -->
 [![Build](https://github.com/apache/fineract/actions/workflows/build-postgresql.yml/badge.svg?branch=develop)](https://github.com/apache/fineract/actions/workflows/build-postgresql.yml)
 [![Docker Hub](https://img.shields.io/docker/pulls/apache/fineract.svg?logo=Docker)](https://hub.docker.com/r/apache/fineract)

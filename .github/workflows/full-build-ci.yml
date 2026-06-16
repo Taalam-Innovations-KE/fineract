@@ -11,6 +11,8 @@ on:
   pull_request:
     paths-ignore:
       - '**/*.md'
+  schedule:
+    - cron: '0 21 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -51,18 +53,39 @@ jobs:
 
   build-embeddable-progressive-loan-jar:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/build-progressive-loan.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   build-docker-image:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/build-docker.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   build-documentation:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/build-documentation.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
@@ -75,89 +98,196 @@ jobs:
 
   run-cucumber-tests:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/build-cucumber.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   run-integrations-tests-on-postgresql:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/build-postgresql.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   run-integrations-tests-on-mysql:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/build-mysql.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   run-integrations-tests-on-mariadb:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/build-mariadb.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   run-e2e-tests:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/build-e2e-tests.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   run-liquibase-only-on-postgresql:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/liquibase-only-postgresql.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   run-messaging-smoke-tests:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/smoke-messaging.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   run-api-backward-compatibility:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/verify-api-backward-compatibility.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   run-liquibase-backward-compatibility:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/verify-liquibase-backward-compatibility.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   run-liquibase-ddl-safety:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/verify-liquibase-ddl-safety.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   run-regression-safety-db-changes:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/regression-safety-db-changes.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   run-sonarqube:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        vars.ENABLE_SONARQUBE == 'true' &&
+        (
+          github.ref_name == 'develop' ||
+          startsWith(github.ref_name, 'release/') ||
+          startsWith(github.ref_name, '1.')
+        )
+      }}
     uses: ./.github/workflows/sonarqube.yml
+    with:
+      sonar-organization: ${{ vars.SONAR_ORGANIZATION }}
+      sonar-project-key: ${{ vars.SONAR_PROJECT_KEY }}
+      sonar-host-url: ${{ vars.SONAR_HOST_URL }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
-      SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
-      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
-      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
       SONARCLOUD_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
 
   run-integration-tests-sequentially-on-postgresql:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        startsWith(github.ref_name, 'release/') ||
+        startsWith(github.ref_name, '1.')
+      }}
     uses: ./.github/workflows/run-integration-test-sequentially-postgresql.yml
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
   publish-dockerhub:
     needs: build-core
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        vars.ENABLE_DOCKERHUB_PUBLISH == 'true' &&
+        (
+          github.ref_name == 'develop' ||
+          startsWith(github.ref_name, 'release/') ||
+          startsWith(github.ref_name, '1.')
+        )
+      }}
     uses: ./.github/workflows/publish-dockerhub.yml
+    with:
+      docker-image: ${{ vars.DOCKER_IMAGE }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}

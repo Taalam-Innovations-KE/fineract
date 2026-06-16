@@ -18,8 +18,23 @@
 name: Fineract Signed Commits Check
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Base ref to compare against
+        required: false
+        default: develop
+        type: string
+      head_ref:
+        description: Head ref or SHA to verify
+        required: false
+        default: HEAD
+        type: string
+      strict:
+        description: Fail if unsigned commits are found
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -38,16 +53,21 @@ jobs:
 
       - name: Fetch base branch
         env:
-          BASE_REF: ${{ github.base_ref }}
+          BASE_REF: ${{ inputs.base_ref }}
         run: git fetch origin "$BASE_REF"
 
       - name: Verify signatures
         env:
-          BASE_REF: ${{ github.base_ref }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ inputs.base_ref }}
+          HEAD_REF: ${{ inputs.head_ref }}
+          STRICT: ${{ inputs.strict }}
         run: |
           chmod +x scripts/verify-signed-commits.sh
-          ./scripts/verify-signed-commits.sh \
+          args=(
             --base-ref "origin/$BASE_REF" \
-            --head-ref "$HEAD_SHA" \
-            --strict
+            --head-ref "$HEAD_REF"
+          )
+          if [ "$STRICT" = "true" ]; then
+            args+=(--strict)
+          fi
+          ./scripts/verify-signed-commits.sh "${args[@]}"

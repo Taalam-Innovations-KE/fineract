@@ -29,8 +29,8 @@ class SecurityValidationConfigTest {
 
     @ParameterizedTest
     @CsvSource({ "true,false,false,false", "false,true,false,false", "false,false,true,false" })
-    void validatesWhenExactlyOneAuthenticationSchemeIsEnabled(boolean basicAuthEnabled, boolean oauthEnabled,
-            boolean externalOauthEnabled, boolean twoFactorEnabled) {
+    void validatesWhenExactlyOneAuthenticationSchemeIsEnabled(boolean basicAuthEnabled, boolean oauthEnabled, boolean externalOauthEnabled,
+            boolean twoFactorEnabled) {
         SecurityValidationConfig underTest = config(basicAuthEnabled, oauthEnabled, externalOauthEnabled, twoFactorEnabled);
 
         assertThatCode(underTest::validate).doesNotThrowAnyException();
@@ -39,8 +39,8 @@ class SecurityValidationConfigTest {
     @ParameterizedTest
     @CsvSource({ "false,false,false,false", "true,true,false,false", "true,false,true,false", "false,true,true,false",
             "true,true,true,false" })
-    void rejectsInvalidAuthenticationSchemeCombinations(boolean basicAuthEnabled, boolean oauthEnabled,
-            boolean externalOauthEnabled, boolean twoFactorEnabled) {
+    void rejectsInvalidAuthenticationSchemeCombinations(boolean basicAuthEnabled, boolean oauthEnabled, boolean externalOauthEnabled,
+            boolean twoFactorEnabled) {
         SecurityValidationConfig underTest = config(basicAuthEnabled, oauthEnabled, externalOauthEnabled, twoFactorEnabled);
 
         assertThatThrownBy(underTest::validate).isInstanceOf(IllegalArgumentException.class);
@@ -48,8 +48,8 @@ class SecurityValidationConfigTest {
 
     @ParameterizedTest
     @CsvSource({ "false,false,true,true" })
-    void rejectsExternalOauthWithFineractTwoFactor(boolean basicAuthEnabled, boolean oauthEnabled,
-            boolean externalOauthEnabled, boolean twoFactorEnabled) {
+    void rejectsExternalOauthWithFineractTwoFactor(boolean basicAuthEnabled, boolean oauthEnabled, boolean externalOauthEnabled,
+            boolean twoFactorEnabled) {
         SecurityValidationConfig underTest = config(basicAuthEnabled, oauthEnabled, externalOauthEnabled, twoFactorEnabled);
 
         assertThatThrownBy(underTest::validate).isInstanceOf(IllegalArgumentException.class)

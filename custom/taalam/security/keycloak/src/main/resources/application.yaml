@@ -25,5 +25,8 @@ fineract:
           send-actions-email: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_SEND_ACTIONS_EMAIL:true}
           actions-email-lifespan-seconds: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ACTIONS_EMAIL_LIFESPAN_SECONDS:43200}
           sync-username-on-email-match: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_SYNC_USERNAME_ON_EMAIL_MATCH:true}
+          ui-client:
+            client-id: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_UI_CLIENT_ID:fineract-ui}
+            base-url: ${FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_UI_BASE_URL:}
           required-actions:
             - UPDATE_PASSWORD

@@ -5,14 +5,18 @@
 package ke.co.taalaminnovations.fineract.security.keycloak.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import java.util.List;
+import java.util.Map;
 import ke.co.taalaminnovations.fineract.security.keycloak.config.TaalamKeycloakResourceServerProperties;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRegistrationRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,8 +39,10 @@ class TaalamKeycloakTenantRealmProvisioningServiceTest {
     private final RealmsResource realmsResource = mock(RealmsResource.class);
     private final RealmResource realmResource = mock(RealmResource.class);
     private final ClientsResource clientsResource = mock(ClientsResource.class);
-    private final ClientResource clientResource = mock(ClientResource.class);
-    private final ProtocolMappersResource protocolMappersResource = mock(ProtocolMappersResource.class);
+    private final ClientResource resourceServerClientResource = mock(ClientResource.class);
+    private final ClientResource uiClientResource = mock(ClientResource.class);
+    private final ProtocolMappersResource resourceServerProtocolMappersResource = mock(ProtocolMappersResource.class);
+    private final ProtocolMappersResource uiProtocolMappersResource = mock(ProtocolMappersResource.class);
     private final TaalamKeycloakResourceServerProperties properties = new TaalamKeycloakResourceServerProperties();
     private final TaalamKeycloakTenantRealmProvisioningService underTest = new TaalamKeycloakTenantRealmProvisioningService(properties,
             keycloakClientFactory);
@@ -50,10 +56,13 @@ class TaalamKeycloakTenantRealmProvisioningServiceTest {
         when(keycloak.realms()).thenReturn(realmsResource);
         when(keycloak.realm("new_ke")).thenReturn(realmResource);
         when(realmResource.clients()).thenReturn(clientsResource);
-        when(clientResource.getProtocolMappers()).thenReturn(protocolMappersResource);
+        when(resourceServerClientResource.getProtocolMappers()).thenReturn(resourceServerProtocolMappersResource);
+        when(uiClientResource.getProtocolMappers()).thenReturn(uiProtocolMappersResource);
         when(clientsResource.create(any(ClientRepresentation.class)))
                 .thenAnswer(invocation -> Response.status(Response.Status.CREATED).build());
-        when(protocolMappersResource.createMapper(any(ProtocolMapperRepresentation.class)))
+        when(resourceServerProtocolMappersResource.createMapper(any(ProtocolMapperRepresentation.class)))
+                .thenAnswer(invocation -> Response.status(Response.Status.CREATED).build());
+        when(uiProtocolMappersResource.createMapper(any(ProtocolMapperRepresentation.class)))
                 .thenAnswer(invocation -> Response.status(Response.Status.CREATED).build());
     }
 
@@ -63,9 +72,9 @@ class TaalamKeycloakTenantRealmProvisioningServiceTest {
         ClientRepresentation createdClient = client("kc-client-id", "fineract");
         when(realmResource.toRepresentation()).thenThrow(notFound()).thenReturn(realm("new_ke"));
         when(clientsResource.findByClientId("fineract")).thenReturn(List.of()).thenReturn(List.of(createdClient));
-        when(clientsResource.get("kc-client-id")).thenReturn(clientResource);
-        when(clientResource.toRepresentation()).thenReturn(createdClient);
-        when(protocolMappersResource.getMappersPerProtocol("openid-connect")).thenReturn(List.of());
+        when(clientsResource.get("kc-client-id")).thenReturn(resourceServerClientResource);
+        when(resourceServerClientResource.toRepresentation()).thenReturn(createdClient);
+        when(resourceServerProtocolMappersResource.getMappersPerProtocol("openid-connect")).thenReturn(List.of());
 
         underTest.ensureTenant(request);
 
@@ -82,9 +91,10 @@ class TaalamKeycloakTenantRealmProvisioningServiceTest {
         assertThat(clientCaptor.getValue().isDirectAccessGrantsEnabled()).isTrue();
 
         ArgumentCaptor<ProtocolMapperRepresentation> mapperCaptor = ArgumentCaptor.forClass(ProtocolMapperRepresentation.class);
-        org.mockito.Mockito.verify(protocolMappersResource, org.mockito.Mockito.times(3)).createMapper(mapperCaptor.capture());
+        org.mockito.Mockito.verify(resourceServerProtocolMappersResource, org.mockito.Mockito.times(3)).createMapper(mapperCaptor.capture());
         assertThat(mapperCaptor.getAllValues()).extracting(ProtocolMapperRepresentation::getName).containsExactly("fineract-audience",
                 "fineract-username", "fineract-email");
+        verify(clientsResource, never()).findByClientId("fineract-ui");
         verify(keycloak).close();
     }
 
@@ -104,16 +114,98 @@ class TaalamKeycloakTenantRealmProvisioningServiceTest {
         existingMapper.setName("fineract-audience");
         when(realmResource.toRepresentation()).thenReturn(realm);
         when(clientsResource.findByClientId("fineract")).thenReturn(List.of(existingClient));
-        when(clientsResource.get("kc-client-id")).thenReturn(clientResource);
-        when(clientResource.toRepresentation()).thenReturn(existingClient);
-        when(protocolMappersResource.getMappersPerProtocol("openid-connect")).thenReturn(List.of(existingMapper)).thenReturn(List.of())
+        when(clientsResource.get("kc-client-id")).thenReturn(resourceServerClientResource);
+        when(resourceServerClientResource.toRepresentation()).thenReturn(existingClient);
+        when(resourceServerProtocolMappersResource.getMappersPerProtocol("openid-connect")).thenReturn(List.of(existingMapper)).thenReturn(List.of())
                 .thenReturn(List.of());
 
         underTest.ensureTenant(request);
 
         verify(realmResource).update(realm);
-        verify(clientResource).update(existingClient);
-        verify(protocolMappersResource).update(org.mockito.Mockito.eq("mapper-1"), any(ProtocolMapperRepresentation.class));
+        verify(resourceServerClientResource).update(existingClient);
+        verify(resourceServerProtocolMappersResource).update(eq("mapper-1"), any(ProtocolMapperRepresentation.class));
+    }
+
+    @Test
+    void createsConfiguredUiClientWithPkceRedirectsLogoutAndAudienceMapper() {
+        properties.getProvisioning().getUiClient().setBaseUrl("https://app.example.org/");
+        RuntimeTenantRegistrationRequest request = request();
+        ClientRepresentation resourceServerClient = client("kc-client-id", "fineract");
+        ClientRepresentation createdUiClient = uiClient("kc-ui-client-id", "fineract-ui", "https://app.example.org");
+        when(realmResource.toRepresentation()).thenReturn(realm("new_ke"));
+        when(clientsResource.findByClientId("fineract")).thenReturn(List.of(resourceServerClient));
+        when(clientsResource.findByClientId("fineract-ui")).thenReturn(List.of()).thenReturn(List.of(createdUiClient));
+        when(clientsResource.get("kc-client-id")).thenReturn(resourceServerClientResource);
+        when(clientsResource.get("kc-ui-client-id")).thenReturn(uiClientResource);
+        when(resourceServerClientResource.toRepresentation()).thenReturn(resourceServerClient);
+        when(uiClientResource.toRepresentation()).thenReturn(createdUiClient);
+        when(resourceServerProtocolMappersResource.getMappersPerProtocol("openid-connect")).thenReturn(List.of());
+        when(uiProtocolMappersResource.getMappersPerProtocol("openid-connect")).thenReturn(List.of());
+
+        underTest.ensureTenant(request);
+
+        ArgumentCaptor<ClientRepresentation> clientCaptor = ArgumentCaptor.forClass(ClientRepresentation.class);
+        verify(clientsResource).create(clientCaptor.capture());
+        ClientRepresentation uiClient = clientCaptor.getValue();
+        assertThat(uiClient.getClientId()).isEqualTo("fineract-ui");
+        assertThat(uiClient.isPublicClient()).isTrue();
+        assertThat(uiClient.isStandardFlowEnabled()).isTrue();
+        assertThat(uiClient.isDirectAccessGrantsEnabled()).isFalse();
+        assertThat(uiClient.isImplicitFlowEnabled()).isFalse();
+        assertThat(uiClient.isServiceAccountsEnabled()).isFalse();
+        assertThat(uiClient.getRedirectUris()).containsExactly("https://app.example.org/api/auth/callback/keycloak");
+        assertThat(uiClient.getWebOrigins()).containsExactly("https://app.example.org");
+        assertThat(uiClient.getAttributes()).containsEntry("pkce.code.challenge.method", "S256")
+                .containsEntry("post.logout.redirect.uris", "https://app.example.org/*");
+
+        ArgumentCaptor<ProtocolMapperRepresentation> uiMapperCaptor = ArgumentCaptor.forClass(ProtocolMapperRepresentation.class);
+        verify(uiProtocolMappersResource).createMapper(uiMapperCaptor.capture());
+        assertThat(uiMapperCaptor.getValue().getName()).isEqualTo("fineract-audience");
+        assertThat(uiMapperCaptor.getValue().getConfig()).containsEntry("included.client.audience", "fineract")
+                .containsEntry("access.token.claim", "true");
+    }
+
+    @Test
+    void repairsExistingUiClientWithoutDiscardingUnrelatedAttributes() {
+        properties.getProvisioning().getUiClient().setBaseUrl("https://app.example.org");
+        RuntimeTenantRegistrationRequest request = request();
+        ClientRepresentation resourceServerClient = client("kc-client-id", "fineract");
+        ClientRepresentation existingUiClient = client("kc-ui-client-id", "fineract-ui");
+        existingUiClient.setRedirectUris(List.of("https://old.example.org/callback"));
+        existingUiClient.setWebOrigins(List.of("https://old.example.org"));
+        existingUiClient.setAttributes(Map.of("custom.attribute", "keep"));
+        ProtocolMapperRepresentation existingUiAudienceMapper = new ProtocolMapperRepresentation();
+        existingUiAudienceMapper.setId("ui-mapper-1");
+        existingUiAudienceMapper.setName("fineract-audience");
+        when(realmResource.toRepresentation()).thenReturn(realm("new_ke"));
+        when(clientsResource.findByClientId("fineract")).thenReturn(List.of(resourceServerClient));
+        when(clientsResource.findByClientId("fineract-ui")).thenReturn(List.of(existingUiClient));
+        when(clientsResource.get("kc-client-id")).thenReturn(resourceServerClientResource);
+        when(clientsResource.get("kc-ui-client-id")).thenReturn(uiClientResource);
+        when(resourceServerClientResource.toRepresentation()).thenReturn(resourceServerClient);
+        when(uiClientResource.toRepresentation()).thenReturn(existingUiClient);
+        when(resourceServerProtocolMappersResource.getMappersPerProtocol("openid-connect")).thenReturn(List.of());
+        when(uiProtocolMappersResource.getMappersPerProtocol("openid-connect")).thenReturn(List.of(existingUiAudienceMapper));
+
+        underTest.ensureTenant(request);
+
+        verify(uiClientResource).update(existingUiClient);
+        assertThat(existingUiClient.isPublicClient()).isTrue();
+        assertThat(existingUiClient.isDirectAccessGrantsEnabled()).isFalse();
+        assertThat(existingUiClient.getRedirectUris()).containsExactly("https://app.example.org/api/auth/callback/keycloak");
+        assertThat(existingUiClient.getWebOrigins()).containsExactly("https://app.example.org");
+        assertThat(existingUiClient.getAttributes()).containsEntry("custom.attribute", "keep")
+                .containsEntry("pkce.code.challenge.method", "S256")
+                .containsEntry("post.logout.redirect.uris", "https://app.example.org/*");
+        verify(uiProtocolMappersResource).update(eq("ui-mapper-1"), any(ProtocolMapperRepresentation.class));
+    }
+
+    @Test
+    void rejectsInvalidUiClientBaseUrl() {
+        properties.getProvisioning().getUiClient().setBaseUrl("not-a-url");
+
+        assertThatThrownBy(() -> underTest.ensureTenant(request())).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Keycloak UI client base-url must be a valid absolute http(s) URL");
     }
 
     private RuntimeTenantRegistrationRequest request() {
@@ -143,6 +235,25 @@ class TaalamKeycloakTenantRealmProvisioningServiceTest {
         client.setStandardFlowEnabled(true);
         client.setDirectAccessGrantsEnabled(true);
         client.setImplicitFlowEnabled(false);
+        return client;
+    }
+
+    private ClientRepresentation uiClient(String id, String clientId, String baseUrl) {
+        ClientRepresentation client = new ClientRepresentation();
+        client.setId(id);
+        client.setClientId(clientId);
+        client.setEnabled(true);
+        client.setProtocol("openid-connect");
+        client.setPublicClient(true);
+        client.setBearerOnly(false);
+        client.setStandardFlowEnabled(true);
+        client.setDirectAccessGrantsEnabled(false);
+        client.setImplicitFlowEnabled(false);
+        client.setServiceAccountsEnabled(false);
+        client.setFullScopeAllowed(true);
+        client.setRedirectUris(List.of(baseUrl + "/api/auth/callback/keycloak"));
+        client.setWebOrigins(List.of(baseUrl));
+        client.setAttributes(Map.of("pkce.code.challenge.method", "S256", "post.logout.redirect.uris", baseUrl + "/*"));
         return client;
     }
 

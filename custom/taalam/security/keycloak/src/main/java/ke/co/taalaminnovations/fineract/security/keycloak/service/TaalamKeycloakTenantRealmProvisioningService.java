@@ -6,12 +6,15 @@ package ke.co.taalaminnovations.fineract.security.keycloak.service;
 
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
+import java.net.URI;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import ke.co.taalaminnovations.fineract.security.keycloak.config.TaalamKeycloakResourceServerProperties;
 import ke.co.taalaminnovations.fineract.security.keycloak.config.TaalamKeycloakResourceServerProperties.Provisioning;
+import ke.co.taalaminnovations.fineract.security.keycloak.config.TaalamKeycloakResourceServerProperties.UiClient;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRegistrationRequest;
 import ke.co.taalaminnovations.fineract.tenant.runtime.service.TenantIdentityProviderProvisioningService;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +36,9 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
     private static final String OPENID_CONNECT = "openid-connect";
     private static final String AUDIENCE_MAPPER = "oidc-audience-mapper";
     private static final String USER_MODEL_PROPERTY_MAPPER = "oidc-usermodel-property-mapper";
+    private static final String PKCE_CODE_CHALLENGE_METHOD = "pkce.code.challenge.method";
+    private static final String PKCE_METHOD_S256 = "S256";
+    private static final String POST_LOGOUT_REDIRECT_URIS = "post.logout.redirect.uris";
     private static final String FINERACT_AUDIENCE_MAPPER_NAME = "fineract-audience";
     private static final String FINERACT_USERNAME_MAPPER_NAME = "fineract-username";
     private static final String FINERACT_EMAIL_MAPPER_NAME = "fineract-email";
@@ -43,15 +49,23 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
     @Override
     public void ensureTenant(final RuntimeTenantRegistrationRequest request) {
         validateConfiguration();
+        final String uiClientBaseUrl = normalizedUiClientBaseUrl();
 
         final Provisioning provisioning = properties.getProvisioning();
         try (Keycloak keycloak = keycloakClientFactory.create(properties.normalizedKeycloakBaseUrl(), provisioning.getAdminRealm(),
                 provisioning.getAdminClientId(), provisioning.getAdminClientSecret())) {
             final RealmResource realm = ensureRealm(keycloak, request);
-            final ClientResource client = ensureClient(realm.clients(), properties.getAudience());
-            ensureProtocolMapper(client, audienceMapper(properties.getAudience()));
-            ensureProtocolMapper(client, userPropertyMapper(FINERACT_USERNAME_MAPPER_NAME, "username", properties.getUsernameClaim()));
-            ensureProtocolMapper(client, userPropertyMapper(FINERACT_EMAIL_MAPPER_NAME, "email", properties.getEmailClaim()));
+            final ClientsResource clients = realm.clients();
+            final ClientResource resourceServerClient = ensureResourceServerClient(clients, properties.getAudience());
+            ensureProtocolMapper(resourceServerClient, audienceMapper(properties.getAudience()));
+            ensureProtocolMapper(resourceServerClient,
+                    userPropertyMapper(FINERACT_USERNAME_MAPPER_NAME, "username", properties.getUsernameClaim()));
+            ensureProtocolMapper(resourceServerClient, userPropertyMapper(FINERACT_EMAIL_MAPPER_NAME, "email", properties.getEmailClaim()));
+
+            if (StringUtils.hasText(uiClientBaseUrl)) {
+                final ClientResource uiClient = ensureUiClient(clients, provisioning.getUiClient(), uiClientBaseUrl);
+                ensureProtocolMapper(uiClient, audienceMapper(properties.getAudience()));
+            }
         }
     }
 
@@ -77,6 +91,9 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
         }
         if (!StringUtils.hasText(provisioning.getAdminClientSecret())) {
             throw new IllegalStateException("Keycloak realm provisioning is enabled but admin-client-secret is not configured");
+        }
+        if (StringUtils.hasText(normalizedUiClientBaseUrl()) && !StringUtils.hasText(provisioning.getUiClient().getClientId())) {
+            throw new IllegalStateException("Keycloak UI client provisioning is enabled but ui-client.client-id is not configured");
         }
     }
 
@@ -141,10 +158,10 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
         }
     }
 
-    private ClientResource ensureClient(final ClientsResource clients, final String clientId) {
+    private ClientResource ensureResourceServerClient(final ClientsResource clients, final String clientId) {
         Optional<ClientRepresentation> existingClient = findSingleClient(clients, clientId);
         if (existingClient.isEmpty()) {
-            createClient(clients, clientId);
+            createClient(clients, resourceServerClientRepresentation(clientId));
             existingClient = findSingleClient(clients, clientId);
         }
 
@@ -191,6 +208,72 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
         return client;
     }
 
+    private ClientResource ensureUiClient(final ClientsResource clients, final UiClient uiClient, final String baseUrl) {
+        final String clientId = uiClient.getClientId().trim();
+        Optional<ClientRepresentation> existingClient = findSingleClient(clients, clientId);
+        if (existingClient.isEmpty()) {
+            createClient(clients, uiClientRepresentation(clientId, baseUrl));
+            existingClient = findSingleClient(clients, clientId);
+        }
+
+        final ClientRepresentation clientRepresentation = existingClient
+                .orElseThrow(() -> new IllegalStateException("Keycloak client " + clientId + " was not found after creation"));
+        final ClientResource client = clients.get(clientRepresentation.getId());
+        final ClientRepresentation current = client.toRepresentation();
+        boolean changed = false;
+        if (!Boolean.TRUE.equals(current.isEnabled())) {
+            current.setEnabled(true);
+            changed = true;
+        }
+        if (!OPENID_CONNECT.equals(current.getProtocol())) {
+            current.setProtocol(OPENID_CONNECT);
+            changed = true;
+        }
+        if (!Boolean.TRUE.equals(current.isPublicClient())) {
+            current.setPublicClient(true);
+            changed = true;
+        }
+        if (!Boolean.FALSE.equals(current.isBearerOnly())) {
+            current.setBearerOnly(false);
+            changed = true;
+        }
+        if (!Boolean.TRUE.equals(current.isStandardFlowEnabled())) {
+            current.setStandardFlowEnabled(true);
+            changed = true;
+        }
+        if (!Boolean.FALSE.equals(current.isDirectAccessGrantsEnabled())) {
+            current.setDirectAccessGrantsEnabled(false);
+            changed = true;
+        }
+        if (!Boolean.FALSE.equals(current.isImplicitFlowEnabled())) {
+            current.setImplicitFlowEnabled(false);
+            changed = true;
+        }
+        if (!Boolean.FALSE.equals(current.isServiceAccountsEnabled())) {
+            current.setServiceAccountsEnabled(false);
+            changed = true;
+        }
+        if (!Boolean.TRUE.equals(current.isFullScopeAllowed())) {
+            current.setFullScopeAllowed(true);
+            changed = true;
+        }
+        if (!Objects.equals(current.getRedirectUris(), uiRedirectUris(baseUrl))) {
+            current.setRedirectUris(uiRedirectUris(baseUrl));
+            changed = true;
+        }
+        if (!Objects.equals(current.getWebOrigins(), uiWebOrigins(baseUrl))) {
+            current.setWebOrigins(uiWebOrigins(baseUrl));
+            changed = true;
+        }
+        if (ensureUiClientAttributes(current, baseUrl)) {
+            changed = true;
+        }
+        if (changed) {
+            client.update(current);
+        }
+        return client;
+    }
+
     private Optional<ClientRepresentation> findSingleClient(final ClientsResource clients, final String clientId) {
         final List<ClientRepresentation> matches = clients.findByClientId(clientId);
         final List<ClientRepresentation> safeMatches = matches == null ? List.of() : matches;
@@ -200,8 +283,8 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
         return safeMatches.stream().findFirst();
     }
 
-    private void createClient(final ClientsResource clients, final String clientId) {
-        try (Response response = clients.create(clientRepresentation(clientId))) {
+    private void createClient(final ClientsResource clients, final ClientRepresentation clientRepresentation) {
+        try (Response response = clients.create(clientRepresentation)) {
             final int status = response.getStatus();
             if (status != Response.Status.CREATED.getStatusCode() && status != Response.Status.NO_CONTENT.getStatusCode()
                     && status != Response.Status.CONFLICT.getStatusCode()) {
@@ -210,7 +293,7 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
         }
     }
 
-    private ClientRepresentation clientRepresentation(final String clientId) {
+    private ClientRepresentation resourceServerClientRepresentation(final String clientId) {
         final ClientRepresentation client = new ClientRepresentation();
         client.setClientId(clientId);
         client.setName("Fineract Resource Server");
@@ -225,6 +308,58 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
         client.setServiceAccountsEnabled(false);
         client.setFullScopeAllowed(true);
         return client;
+    }
+
+    private ClientRepresentation uiClientRepresentation(final String clientId, final String baseUrl) {
+        final ClientRepresentation client = new ClientRepresentation();
+        client.setClientId(clientId);
+        client.setName("Fineract UI");
+        client.setProtocol(OPENID_CONNECT);
+        client.setEnabled(true);
+        client.setPublicClient(true);
+        client.setBearerOnly(false);
+        client.setStandardFlowEnabled(true);
+        client.setDirectAccessGrantsEnabled(false);
+        client.setImplicitFlowEnabled(false);
+        client.setServiceAccountsEnabled(false);
+        client.setFullScopeAllowed(true);
+        client.setRedirectUris(uiRedirectUris(baseUrl));
+        client.setWebOrigins(uiWebOrigins(baseUrl));
+        client.setAttributes(uiClientAttributes(baseUrl));
+        return client;
+    }
+
+    private boolean ensureUiClientAttributes(final ClientRepresentation client, final String baseUrl) {
+        final Map<String, String> attributes = new HashMap<>(Optional.ofNullable(client.getAttributes()).orElseGet(Map::of));
+        boolean changed = false;
+        if (!Objects.equals(attributes.get(PKCE_CODE_CHALLENGE_METHOD), PKCE_METHOD_S256)) {
+            attributes.put(PKCE_CODE_CHALLENGE_METHOD, PKCE_METHOD_S256);
+            changed = true;
+        }
+        if (!Objects.equals(attributes.get(POST_LOGOUT_REDIRECT_URIS), uiPostLogoutRedirectUri(baseUrl))) {
+            attributes.put(POST_LOGOUT_REDIRECT_URIS, uiPostLogoutRedirectUri(baseUrl));
+            changed = true;
+        }
+        if (changed) {
+            client.setAttributes(attributes);
+        }
+        return changed;
+    }
+
+    private Map<String, String> uiClientAttributes(final String baseUrl) {
+        return Map.of(PKCE_CODE_CHALLENGE_METHOD, PKCE_METHOD_S256, POST_LOGOUT_REDIRECT_URIS, uiPostLogoutRedirectUri(baseUrl));
+    }
+
+    private List<String> uiRedirectUris(final String baseUrl) {
+        return List.of(baseUrl + "/api/auth/callback/keycloak");
+    }
+
+    private List<String> uiWebOrigins(final String baseUrl) {
+        return List.of(baseUrl);
+    }
+
+    private String uiPostLogoutRedirectUri(final String baseUrl) {
+        return baseUrl + "/*";
     }
 
     private void ensureProtocolMapper(final ClientResource client, final ProtocolMapperRepresentation expected) {
@@ -273,5 +408,32 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
         mapper.setConfig(Map.of("user.attribute", userProperty, "claim.name", claimName, "jsonType.label", "String", "id.token.claim",
                 "true", "access.token.claim", "true", "userinfo.token.claim", "true"));
         return mapper;
+    }
+
+    private String normalizedUiClientBaseUrl() {
+        final UiClient uiClient = properties.getProvisioning().getUiClient();
+        if (uiClient == null || !StringUtils.hasText(uiClient.getBaseUrl())) {
+            return null;
+        }
+        String baseUrl = uiClient.getBaseUrl().trim();
+        while (baseUrl.endsWith("/") && baseUrl.length() > 1) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        }
+        validateUiClientBaseUrl(baseUrl);
+        return baseUrl;
+    }
+
+    private void validateUiClientBaseUrl(final String baseUrl) {
+        final URI uri;
+        try {
+            uri = URI.create(baseUrl);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException("Keycloak UI client base-url must be a valid absolute http(s) URL", e);
+        }
+        final String scheme = uri.getScheme();
+        if (!uri.isAbsolute() || !StringUtils.hasText(uri.getHost())
+                || (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme))) {
+            throw new IllegalStateException("Keycloak UI client base-url must be a valid absolute http(s) URL");
+        }
     }
 }

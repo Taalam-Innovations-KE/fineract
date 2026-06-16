@@ -45,5 +45,14 @@ public class TaalamKeycloakResourceServerProperties {
         private long actionsEmailLifespanSeconds = 43_200L;
         private boolean syncUsernameOnEmailMatch = true;
         private List<String> requiredActions = List.of("UPDATE_PASSWORD");
+        private UiClient uiClient = new UiClient();
+    }
+
+    @Getter
+    @Setter
+    public static final class UiClient {
+
+        private String clientId = "fineract-ui";
+        private String baseUrl;
     }
 }

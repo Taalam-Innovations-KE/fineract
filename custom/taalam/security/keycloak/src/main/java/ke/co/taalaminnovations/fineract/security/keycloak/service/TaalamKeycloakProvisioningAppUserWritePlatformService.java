@@ -23,6 +23,7 @@ import org.apache.fineract.useradministration.service.AppUserWritePlatformServic
 import org.apache.fineract.useradministration.service.AppUserWritePlatformServiceJpaRepositoryImpl;
 import org.apache.fineract.useradministration.service.UserDataValidator;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 @Service
 @Slf4j
+@ConditionalOnProperty(prefix = "fineract.security.oauth2.external.provisioning", name = "enabled", havingValue = "true")
 public class TaalamKeycloakProvisioningAppUserWritePlatformService implements AppUserWritePlatformService {
 
     private final AppUserWritePlatformService delegate;

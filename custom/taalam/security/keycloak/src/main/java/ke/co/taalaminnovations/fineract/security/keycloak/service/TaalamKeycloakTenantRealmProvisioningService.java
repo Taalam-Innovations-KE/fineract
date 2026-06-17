@@ -26,11 +26,13 @@ import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(prefix = "fineract.security.oauth2.external.provisioning", name = "enabled", havingValue = "true")
 public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdentityProviderProvisioningService {
 
     private static final String OPENID_CONNECT = "openid-connect";

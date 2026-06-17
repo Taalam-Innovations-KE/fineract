@@ -27,6 +27,7 @@ import org.apache.fineract.infrastructure.jobs.filter.LoanCOBFilterHelper;
 import org.apache.fineract.infrastructure.jobs.filter.ProgressiveLoanModelCheckerFilter;
 import org.apache.fineract.infrastructure.security.filter.BusinessDateFilter;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -51,6 +52,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @EnableWebSecurity
 @EnableMethodSecurity
 @RequiredArgsConstructor
+@ConditionalOnProperty(prefix = "fineract.security.oauth2.external", name = "enabled", havingValue = "true")
 public class TaalamKeycloakResourceServerSecurityConfiguration {
 
     private final TaalamKeycloakAuthenticationManagerResolver keycloakAuthenticationManagerResolver;

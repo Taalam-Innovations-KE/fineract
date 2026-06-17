@@ -14,8 +14,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class TaalamTenantRuntimeProperties {
 
     private boolean enabled;
-    private String sharedSecret;
+    private final OAuth2 oauth2 = new OAuth2();
     private boolean authenticationVerificationEnabled;
     private String authenticationVerificationUsername = "mifos";
     private String authenticationVerificationPassword = "password";
+
+    @Getter
+    @Setter
+    public static class OAuth2 {
+
+        private String issuerUri;
+        private String jwkSetUri;
+        private String audience = "fineract";
+        private String requiredAuthority = "TENANT_RUNTIME_REGISTER";
+    }
 }

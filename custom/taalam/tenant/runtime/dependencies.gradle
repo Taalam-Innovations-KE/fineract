@@ -12,7 +12,12 @@ dependencies {
     implementation('jakarta.ws.rs:jakarta.ws.rs-api')
     implementation('org.liquibase:liquibase-core')
     implementation('org.springframework.boot:spring-boot-starter-security')
+    implementation('org.springframework.boot:spring-boot-starter-oauth2-resource-server')
     implementation('org.springframework.boot:spring-boot-starter-web')
+    implementation('com.google.crypto.tink:tink:1.17.0') {
+        exclude group: 'com.google.protobuf', module: 'protobuf-java'
+        exclude group: 'com.google.code.gson', module: 'gson'
+    }
     implementation('org.springframework:spring-jdbc')
     compileOnly('org.springframework.boot:spring-boot-autoconfigure')
 }

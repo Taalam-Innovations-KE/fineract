@@ -18,4 +18,12 @@ public class TaalamTenantRuntimeProperties {
     private boolean authenticationVerificationEnabled;
     private String authenticationVerificationUsername = "mifos";
     private String authenticationVerificationPassword = "password";
+
+    /**
+     * OAuth2/OIDC validation for the tenant-runtime endpoint. When a JWK set URI (or issuer URI) is configured the
+     * endpoint authenticates callers with a Keycloak-issued JWT (client-credentials) instead of the shared secret.
+     */
+    private String jwkSetUri;
+    private String issuerUri;
+    private String audience;
 }

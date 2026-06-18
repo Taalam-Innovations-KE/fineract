@@ -296,6 +296,7 @@ The runtime API is mounted below the Fineract context path:
 
 * `POST /fineract-provider/api/v1/tenant-runtime/register-and-refresh`
 * `POST /fineract-provider/api/v1/tenant-runtime/refresh-registered`
+* `POST /fineract-provider/api/v1/tenant-runtime/users/sync`
 
 Both operations are synchronous from Fineract's point of view. The tenancy-management service should call them from its
 asynchronous provisioning or reconciliation jobs and use its own success/failure callbacks to update control-plane state.
@@ -309,7 +310,8 @@ runtime database role and has the plaintext runtime password. Fineract:
 . creates or repairs the Keycloak tenant realm and clients when Keycloak provisioning is enabled;
 . runs Liquibase against the tenant database;
 . clears tenant runtime caches and warms the tenant datasource;
-. optionally verifies configured Fineract authentication against the tenant datasource.
+. optionally verifies configured Fineract authentication against the tenant datasource;
+. optionally syncs bootstrap users when the request includes `user_sync`.
 
 `refresh-registered` is used for reconciliation of an existing Fineract tenant-store row. It is password-free and never
 updates `schema_username`, `schema_password`, or `master_password_hash`. Fineract:
@@ -318,6 +320,70 @@ updates `schema_username`, `schema_password`, or `master_password_hash`. Finerac
 . rejects the request if the registered database name does not match `database_name`;
 . creates or repairs the Keycloak tenant realm and clients when Keycloak provisioning is enabled;
 . runs Liquibase, clears runtime caches, warms the datasource, and optionally verifies authentication.
+
+`users/sync` is used by the tenancy-management service to create or reconcile tenant users after tenant creation or
+during control-plane reconciliation. Fineract:
+
+. loads the registered tenant and rejects the request if `database_name` does not match the tenant-store row;
+. rejects duplicate usernames or emails within the same request as per-user conflicts;
+. resolves each user office by `office_id` or `office_external_id`, and roles by `role_names`;
+. creates or updates the local tenant `m_appuser` record in an independent transaction for each user;
+. prevents duplicate local users by treating email-owned-by-another-active-user and username/email collisions as conflicts;
+. provisions or updates the matching Keycloak user when external provisioning is enabled and `provision_identity` is not `false`;
+. returns per-user `CREATED`, `UPDATED`, `UNCHANGED`, `CONFLICT`, `FAILED`, or `SKIPPED` statuses.
+
+Example user sync request:
+
+[source,json]
+----
+{
+  "tenant_identifier": "acme-ke",
+  "database_name": "fineract_acme_ke",
+  "provision_identity": true,
+  "user_defaults": {
+    "office_id": 1,
+    "role_names": ["Super user"]
+  },
+  "users": [
+    {
+      "source_user_id": "control-plane-user-1",
+      "username": "jane",
+      "email": "jane@example.org",
+      "first_name": "Jane",
+      "last_name": "Doe"
+    }
+  ]
+}
+----
+
+Example user sync response:
+
+[source,json]
+----
+{
+  "tenant_identifier": "acme-ke",
+  "database_name": "fineract_acme_ke",
+  "status": "COMPLETED",
+  "requested": 1,
+  "created": 1,
+  "updated": 0,
+  "unchanged": 0,
+  "conflicts": 0,
+  "failed": 0,
+  "results": [
+    {
+      "source_user_id": "control-plane-user-1",
+      "username": "jane",
+      "email": "jane@example.org",
+      "app_user_id": 42,
+      "local_status": "CREATED",
+      "identity_status": "CREATED",
+      "message": "created Keycloak user"
+    }
+  ],
+  "completed_at": "2026-06-18T12:00:00Z"
+}
+----
 
 The common success response is:
 
@@ -421,6 +487,11 @@ When a Fineract user is created:
 . If no user exists, Fineract creates the Keycloak user.
 
 Provisioning errors are logged after commit and do not roll back the Fineract user. This avoids reversing successful local user management because of an external identity-provider outage. Operators should monitor for `Keycloak user provisioning failed` log entries.
+
+When users are synced through tenant runtime `users/sync`, the local tenant user transaction is also kept separate from
+Keycloak provisioning. A Keycloak failure is returned in the per-user `identity_status` and does not roll back a
+successful local `m_appuser` create or update. The tenancy-management service should retry failed identity sync results
+after the identity provider is healthy.
 
 == Local Developer Smoke Test
 

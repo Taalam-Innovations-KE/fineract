@@ -11,5 +11,10 @@ public record RuntimeTenantRegistrationResponse(@JsonProperty("tenant_identifier
         @JsonProperty("database_name") String databaseName, @JsonProperty("registered") boolean registered,
         @JsonProperty("migrated") boolean migrated, @JsonProperty("refreshed") boolean refreshed,
         @JsonProperty("authentication_verified") boolean authenticationVerified, @JsonProperty("status") String status,
-        @JsonProperty("completed_at") Instant completedAt) {
+        @JsonProperty("completed_at") Instant completedAt, @JsonProperty("user_sync") TenantRuntimeUserSyncResponse userSync) {
+
+    public RuntimeTenantRegistrationResponse(String tenantIdentifier, String databaseName, boolean registered, boolean migrated,
+            boolean refreshed, boolean authenticationVerified, String status, Instant completedAt) {
+        this(tenantIdentifier, databaseName, registered, migrated, refreshed, authenticationVerified, status, completedAt, null);
+    }
 }

@@ -16,6 +16,8 @@ import javax.sql.DataSource;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRefreshRegisteredRequest;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRegistrationRequest;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRegistrationResponse;
+import ke.co.taalaminnovations.fineract.tenant.runtime.api.TenantRuntimeUserSyncRequest;
+import ke.co.taalaminnovations.fineract.tenant.runtime.api.TenantRuntimeUserSyncResponse;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenant;
 import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenantConnection;
@@ -41,6 +43,7 @@ public class TenantRuntimeRefreshService {
     private final RoutingDataSource routingDataSource;
     private final TenantRuntimeAuthenticationVerifier authenticationVerifier;
     private final List<TenantIdentityProviderProvisioningService> identityProviderProvisioningServices;
+    private final TenantRuntimeUserSyncService tenantRuntimeUserSyncService;
 
     public RuntimeTenantRegistrationResponse registerAndRefresh(RuntimeTenantRegistrationRequest request) {
         RuntimeTenantRegistrationRequest normalizedRequest = normalizeAndValidate(request);
@@ -75,8 +78,20 @@ public class TenantRuntimeRefreshService {
         FineractPlatformTenant refreshedTenant = loadTenant(runtimeTenant.getTenantIdentifier());
         warmTenantDataSource(refreshedTenant);
         boolean authenticationVerified = authenticationVerifier.verifyIfEnabled(refreshedTenant);
+        TenantRuntimeUserSyncResponse userSyncResponse = syncUsersIfRequested(refreshedTenant, identityProviderRequest);
         return new RuntimeTenantRegistrationResponse(refreshedTenant.getTenantIdentifier(), refreshedTenant.getConnection().getSchemaName(),
-                registered, migrated, true, authenticationVerified, "READY", Instant.now());
+                registered, migrated, true, authenticationVerified, "READY", Instant.now(), userSyncResponse);
+    }
+
+    private TenantRuntimeUserSyncResponse syncUsersIfRequested(FineractPlatformTenant tenant, RuntimeTenantRegistrationRequest request) {
+        if (request.userSync() == null) {
+            return null;
+        }
+        TenantRuntimeUserSyncRequest requestedSync = request.userSync();
+        TenantRuntimeUserSyncRequest syncRequest = new TenantRuntimeUserSyncRequest(tenant.getTenantIdentifier(),
+                tenant.getConnection().getSchemaName(), requestedSync.dryRun(), requestedSync.provisionIdentity(),
+                requestedSync.userDefaults(), requestedSync.users());
+        return tenantRuntimeUserSyncService.syncUsers(syncRequest);
     }
 
     private void ensureIdentityProviderTenant(RuntimeTenantRegistrationRequest request) {
@@ -108,7 +123,7 @@ public class TenantRuntimeRefreshService {
         String runtimeUsername = requireText(request.runtimeUsername(), "runtime_username");
         String runtimePassword = requireText(request.runtimePassword(), "runtime_password");
         return new RuntimeTenantRegistrationRequest(tenantIdentifier, displayName, timezone, databaseType.name(), databaseHost,
-                databasePort, databaseName, runtimeUsername, runtimePassword, request.connectionParameters());
+                databasePort, databaseName, runtimeUsername, runtimePassword, request.connectionParameters(), request.userSync());
     }
 
     private RuntimeTenantRefreshRegisteredRequest normalizeAndValidateRegisteredRefresh(RuntimeTenantRefreshRegisteredRequest request) {

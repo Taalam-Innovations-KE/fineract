@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 import ke.co.taalaminnovations.fineract.security.keycloak.config.TaalamKeycloakResourceServerProperties;
 import ke.co.taalaminnovations.fineract.security.keycloak.config.TaalamKeycloakResourceServerProperties.Provisioning;
+import ke.co.taalaminnovations.fineract.tenant.runtime.service.TenantRuntimeUserIdentityProvisioningResult;
 import lombok.RequiredArgsConstructor;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.UsersResource;
@@ -24,7 +25,7 @@ public class TaalamKeycloakAdminClient {
     private final TaalamKeycloakResourceServerProperties properties;
     private final TaalamKeycloakAdminClientFactory keycloakClientFactory;
 
-    public void provisionUser(final TaalamKeycloakUserProvisioningRequest request) {
+    public TenantRuntimeUserIdentityProvisioningResult provisionUser(final TaalamKeycloakUserProvisioningRequest request) {
         final Provisioning provisioning = properties.getProvisioning();
         validateConfiguration(provisioning);
 
@@ -37,9 +38,11 @@ public class TaalamKeycloakAdminClient {
                 final UserRepresentation keycloakUser = existingUserByEmail.get();
                 if (provisioning.isSyncUsernameOnEmailMatch()) {
                     updateUser(users, keycloakUser.getId(), request);
+                    sendRequiredActionsEmail(users, keycloakUser.getId());
+                    return new TenantRuntimeUserIdentityProvisioningResult("UPDATED", "matched existing Keycloak user by email");
                 }
                 sendRequiredActionsEmail(users, keycloakUser.getId());
-                return;
+                return new TenantRuntimeUserIdentityProvisioningResult("UNCHANGED", "matched existing Keycloak user by email");
             }
 
             final Optional<UserRepresentation> existingUserByUsername = findUserByUsername(users, request.username());
@@ -47,11 +50,12 @@ public class TaalamKeycloakAdminClient {
                 final UserRepresentation keycloakUser = existingUserByUsername.get();
                 updateUser(users, keycloakUser.getId(), request);
                 sendRequiredActionsEmail(users, keycloakUser.getId());
-                return;
+                return new TenantRuntimeUserIdentityProvisioningResult("UPDATED", "matched existing Keycloak user by username");
             }
 
             final String keycloakUserId = createUser(users, request);
             sendRequiredActionsEmail(users, keycloakUserId);
+            return new TenantRuntimeUserIdentityProvisioningResult("CREATED", "created Keycloak user");
         }
     }
 

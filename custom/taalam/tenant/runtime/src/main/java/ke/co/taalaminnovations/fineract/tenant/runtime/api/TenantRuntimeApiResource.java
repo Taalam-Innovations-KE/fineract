@@ -16,6 +16,7 @@ import jakarta.ws.rs.core.Response;
 import java.util.Map;
 import ke.co.taalaminnovations.fineract.tenant.runtime.service.TenantRuntimeException;
 import ke.co.taalaminnovations.fineract.tenant.runtime.service.TenantRuntimeRefreshService;
+import ke.co.taalaminnovations.fineract.tenant.runtime.service.TenantRuntimeUserSyncService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -26,6 +27,7 @@ public class TenantRuntimeApiResource {
 
     private final ObjectMapper objectMapper;
     private final TenantRuntimeRefreshService tenantRuntimeRefreshService;
+    private final TenantRuntimeUserSyncService tenantRuntimeUserSyncService;
 
     @POST
     @Path("/register-and-refresh")
@@ -55,6 +57,21 @@ public class TenantRuntimeApiResource {
             throw toWebApplicationException(e.getStatus(), e.getMessage(), e);
         } catch (JsonProcessingException e) {
             throw toWebApplicationException(Response.Status.BAD_REQUEST, "Invalid tenant runtime request JSON", e);
+        }
+    }
+
+    @POST
+    @Path("/users/sync")
+    @Consumes({ MediaType.APPLICATION_JSON })
+    @Produces({ MediaType.APPLICATION_JSON })
+    public String syncUsers(String requestBody) {
+        try {
+            TenantRuntimeUserSyncRequest request = objectMapper.readValue(requestBody, TenantRuntimeUserSyncRequest.class);
+            return objectMapper.writeValueAsString(tenantRuntimeUserSyncService.syncUsers(request));
+        } catch (TenantRuntimeException e) {
+            throw toWebApplicationException(e.getStatus(), e.getMessage(), e);
+        } catch (JsonProcessingException e) {
+            throw toWebApplicationException(Response.Status.BAD_REQUEST, "Invalid tenant runtime user sync request JSON", e);
         }
     }
 

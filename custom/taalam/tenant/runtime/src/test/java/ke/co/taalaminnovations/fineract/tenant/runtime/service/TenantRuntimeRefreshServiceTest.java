@@ -44,6 +44,7 @@ class TenantRuntimeRefreshServiceTest {
     private final TenantRuntimeAuthenticationVerifier authenticationVerifier = mock(TenantRuntimeAuthenticationVerifier.class);
     private final TenantIdentityProviderProvisioningService identityProviderProvisioningService = mock(
             TenantIdentityProviderProvisioningService.class);
+    private final TenantRuntimeUserSyncService tenantRuntimeUserSyncService = mock(TenantRuntimeUserSyncService.class);
 
     @AfterEach
     void resetThreadLocalContext() {
@@ -72,7 +73,7 @@ class TenantRuntimeRefreshServiceTest {
         when(authenticationVerifier.verifyIfEnabled(runtimeTenant)).thenReturn(true);
         TenantRuntimeRefreshService underTest = new TenantRuntimeRefreshService(databasePasswordEncryptor, databaseTypeResolver,
                 migrationService, tenantStoreRegistrationService, cacheService, tenantDetailsService, routingDataSource,
-                authenticationVerifier, List.of(identityProviderProvisioningService));
+                authenticationVerifier, List.of(identityProviderProvisioningService), tenantRuntimeUserSyncService);
 
         RuntimeTenantRegistrationResponse response = underTest.registerAndRefresh(request);
 
@@ -103,7 +104,7 @@ class TenantRuntimeRefreshServiceTest {
                 .ensureTenant(request);
         TenantRuntimeRefreshService underTest = new TenantRuntimeRefreshService(databasePasswordEncryptor, databaseTypeResolver,
                 migrationService, tenantStoreRegistrationService, cacheService, tenantDetailsService, routingDataSource,
-                authenticationVerifier, List.of(identityProviderProvisioningService));
+                authenticationVerifier, List.of(identityProviderProvisioningService), tenantRuntimeUserSyncService);
 
         assertThatThrownBy(() -> underTest.registerAndRefresh(request)).isInstanceOf(TenantRuntimeException.class)
                 .hasMessageContaining("Tenant identity provider provisioning failed for tenant new_ke");
@@ -122,7 +123,7 @@ class TenantRuntimeRefreshServiceTest {
         when(tenantDetailsService.loadTenantById("new_ke")).thenReturn(tenant("new_ke", 33L));
         TenantRuntimeRefreshService underTest = new TenantRuntimeRefreshService(databasePasswordEncryptor, databaseTypeResolver,
                 migrationService, tenantStoreRegistrationService, cacheService, tenantDetailsService, routingDataSource,
-                authenticationVerifier, List.of(identityProviderProvisioningService));
+                authenticationVerifier, List.of(identityProviderProvisioningService), tenantRuntimeUserSyncService);
 
         assertThatThrownBy(() -> underTest.registerAndRefresh(request)).isInstanceOf(TenantRuntimeException.class)
                 .hasMessageContaining("database_name");
@@ -146,7 +147,7 @@ class TenantRuntimeRefreshServiceTest {
         when(authenticationVerifier.verifyIfEnabled(runtimeTenant)).thenReturn(false);
         TenantRuntimeRefreshService underTest = new TenantRuntimeRefreshService(databasePasswordEncryptor, databaseTypeResolver,
                 migrationService, tenantStoreRegistrationService, cacheService, tenantDetailsService, routingDataSource,
-                authenticationVerifier, List.of(identityProviderProvisioningService));
+                authenticationVerifier, List.of(identityProviderProvisioningService), tenantRuntimeUserSyncService);
 
         RuntimeTenantRegistrationResponse response = underTest.refreshRegistered(request);
 

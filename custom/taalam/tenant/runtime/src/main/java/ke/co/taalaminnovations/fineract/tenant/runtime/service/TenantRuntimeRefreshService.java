@@ -11,11 +11,14 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.zone.ZoneRulesException;
 import java.util.List;
+import java.util.Objects;
 import javax.sql.DataSource;
+import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRefreshRegisteredRequest;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRegistrationRequest;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRegistrationResponse;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenant;
+import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenantConnection;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.infrastructure.core.service.database.DatabasePasswordEncryptor;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseType;
@@ -41,24 +44,38 @@ public class TenantRuntimeRefreshService {
 
     public RuntimeTenantRegistrationResponse registerAndRefresh(RuntimeTenantRegistrationRequest request) {
         RuntimeTenantRegistrationRequest normalizedRequest = normalizeAndValidate(request);
-        ensureIdentityProviderTenant(normalizedRequest);
         boolean tenantAlreadyRegistered = tenantStoreRegistrationService.isTenantRegistered(normalizedRequest.tenantIdentifier());
-        FineractPlatformTenant migrationTenant = tenantAlreadyRegistered ? loadTenant(normalizedRequest.tenantIdentifier())
-                : transientTenant(normalizedRequest);
-
-        boolean migrated = migrationService.migrate(migrationTenant);
         boolean registered = false;
         if (!tenantAlreadyRegistered) {
-            RuntimeTenantConnection connection = transientConnection(normalizedRequest);
-            tenantStoreRegistrationService.register(normalizedRequest, connection.encryptedPassword(), connection.masterPasswordHash());
+            tenantStoreRegistrationService.register(normalizedRequest,
+                    databasePasswordEncryptor.encrypt(normalizedRequest.runtimePassword()),
+                    databasePasswordEncryptor.getMasterPasswordHash());
             registered = true;
         }
 
         cacheService.clearTenantRuntimeCaches();
         FineractPlatformTenant runtimeTenant = loadTenant(normalizedRequest.tenantIdentifier());
-        warmTenantDataSource(runtimeTenant);
-        boolean authenticationVerified = authenticationVerifier.verifyIfEnabled(runtimeTenant);
-        return new RuntimeTenantRegistrationResponse(runtimeTenant.getTenantIdentifier(), runtimeTenant.getConnection().getSchemaName(),
+        validateRegisteredTenantMatchesRegistrationRequest(runtimeTenant, normalizedRequest);
+        return refreshRuntimeTenant(runtimeTenant, normalizedRequest, registered);
+    }
+
+    public RuntimeTenantRegistrationResponse refreshRegistered(RuntimeTenantRefreshRegisteredRequest request) {
+        RuntimeTenantRefreshRegisteredRequest normalizedRequest = normalizeAndValidateRegisteredRefresh(request);
+        FineractPlatformTenant runtimeTenant = loadTenant(normalizedRequest.tenantIdentifier());
+        validateRegisteredTenantMatchesRefreshRequest(runtimeTenant, normalizedRequest);
+        RuntimeTenantRegistrationRequest identityProviderRequest = toIdentityProviderRequest(normalizedRequest, runtimeTenant);
+        return refreshRuntimeTenant(runtimeTenant, identityProviderRequest, false);
+    }
+
+    private RuntimeTenantRegistrationResponse refreshRuntimeTenant(FineractPlatformTenant runtimeTenant,
+            RuntimeTenantRegistrationRequest identityProviderRequest, boolean registered) {
+        ensureIdentityProviderTenant(identityProviderRequest);
+        boolean migrated = migrationService.migrate(runtimeTenant);
+        cacheService.clearTenantRuntimeCaches();
+        FineractPlatformTenant refreshedTenant = loadTenant(runtimeTenant.getTenantIdentifier());
+        warmTenantDataSource(refreshedTenant);
+        boolean authenticationVerified = authenticationVerifier.verifyIfEnabled(refreshedTenant);
+        return new RuntimeTenantRegistrationResponse(refreshedTenant.getTenantIdentifier(), refreshedTenant.getConnection().getSchemaName(),
                 registered, migrated, true, authenticationVerified, "READY", Instant.now());
     }
 
@@ -94,6 +111,18 @@ public class TenantRuntimeRefreshService {
                 databasePort, databaseName, runtimeUsername, runtimePassword, request.connectionParameters());
     }
 
+    private RuntimeTenantRefreshRegisteredRequest normalizeAndValidateRegisteredRefresh(RuntimeTenantRefreshRegisteredRequest request) {
+        if (request == null) {
+            throw new TenantRuntimeException(Response.Status.BAD_REQUEST, "Tenant runtime refresh request is required");
+        }
+        String tenantIdentifier = requireText(request.tenantIdentifier(), "tenant_identifier");
+        String displayName = StringUtils.hasText(request.displayName()) ? request.displayName().trim() : tenantIdentifier;
+        String timezone = StringUtils.hasText(request.timezone()) ? request.timezone().trim() : "UTC";
+        validateTimezone(timezone);
+        String databaseName = requireText(request.databaseName(), "database_name");
+        return new RuntimeTenantRefreshRegisteredRequest(tenantIdentifier, displayName, timezone, databaseName);
+    }
+
     private DatabaseType normalizeDatabaseType(String requestedDatabaseType) {
         DatabaseType configuredDatabaseType = databaseTypeResolver.databaseType();
         if (!StringUtils.hasText(requestedDatabaseType)) {
@@ -121,15 +150,6 @@ public class TenantRuntimeRefreshService {
         return databaseType.isMySql() ? 3306 : 5432;
     }
 
-    private FineractPlatformTenant transientTenant(RuntimeTenantRegistrationRequest request) {
-        return transientConnection(request).toTenant(-1L);
-    }
-
-    private RuntimeTenantConnection transientConnection(RuntimeTenantRegistrationRequest request) {
-        return new RuntimeTenantConnection(request, databasePasswordEncryptor.encrypt(request.runtimePassword()),
-                databasePasswordEncryptor.getMasterPasswordHash());
-    }
-
     private FineractPlatformTenant loadTenant(String tenantIdentifier) {
         try {
             cacheService.clearTenantRuntimeCaches();
@@ -152,6 +172,55 @@ public class TenantRuntimeRefreshService {
                     "Unable to initialize runtime datasource for tenant " + tenant.getTenantIdentifier(), e);
         } finally {
             ThreadLocalContextUtil.reset();
+        }
+    }
+
+    private void validateRegisteredTenantMatchesRegistrationRequest(FineractPlatformTenant tenant,
+            RuntimeTenantRegistrationRequest request) {
+        FineractPlatformTenantConnection connection = tenant.getConnection();
+        requireTenantConnection(tenant, connection);
+        assertMatches("database_name", connection.getSchemaName(), request.databaseName(), tenant.getTenantIdentifier());
+        assertMatches("database_host", connection.getSchemaServer(), request.databaseHost(), tenant.getTenantIdentifier());
+        assertMatches("database_port", connection.getSchemaServerPort(), String.valueOf(request.databasePort()),
+                tenant.getTenantIdentifier());
+        assertMatches("runtime_username", connection.getSchemaUsername(), request.runtimeUsername(), tenant.getTenantIdentifier());
+    }
+
+    private void validateRegisteredTenantMatchesRefreshRequest(FineractPlatformTenant tenant,
+            RuntimeTenantRefreshRegisteredRequest request) {
+        FineractPlatformTenantConnection connection = tenant.getConnection();
+        requireTenantConnection(tenant, connection);
+        assertMatches("database_name", connection.getSchemaName(), request.databaseName(), tenant.getTenantIdentifier());
+    }
+
+    private void requireTenantConnection(FineractPlatformTenant tenant, FineractPlatformTenantConnection connection) {
+        if (connection == null || !StringUtils.hasText(connection.getSchemaName())) {
+            throw new TenantRuntimeException(Response.Status.CONFLICT,
+                    "Tenant " + tenant.getTenantIdentifier() + " exists without a usable runtime database connection");
+        }
+    }
+
+    private void assertMatches(String fieldName, String registeredValue, String requestedValue, String tenantIdentifier) {
+        if (!Objects.equals(registeredValue, requestedValue)) {
+            throw new TenantRuntimeException(Response.Status.CONFLICT, "Registered tenant " + tenantIdentifier + " has " + fieldName + " ["
+                    + registeredValue + "] but request contains [" + requestedValue + "]");
+        }
+    }
+
+    private RuntimeTenantRegistrationRequest toIdentityProviderRequest(RuntimeTenantRefreshRegisteredRequest request,
+            FineractPlatformTenant tenant) {
+        FineractPlatformTenantConnection connection = tenant.getConnection();
+        return new RuntimeTenantRegistrationRequest(request.tenantIdentifier(), request.displayName(), request.timezone(),
+                databaseTypeResolver.databaseType().name(), connection.getSchemaServer(), schemaServerPort(tenant, connection),
+                connection.getSchemaName(), connection.getSchemaUsername(), null, connection.getSchemaConnectionParameters());
+    }
+
+    private Integer schemaServerPort(FineractPlatformTenant tenant, FineractPlatformTenantConnection connection) {
+        try {
+            return Integer.valueOf(connection.getSchemaServerPort());
+        } catch (NumberFormatException e) {
+            throw new TenantRuntimeException(Response.Status.CONFLICT,
+                    "Tenant " + tenant.getTenantIdentifier() + " has an invalid runtime database port", e);
         }
     }
 

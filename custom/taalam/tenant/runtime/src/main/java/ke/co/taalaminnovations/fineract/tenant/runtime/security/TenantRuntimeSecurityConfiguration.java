@@ -64,15 +64,14 @@ public class TenantRuntimeSecurityConfiguration {
                 : NimbusJwtDecoder.withIssuerLocation(properties.getIssuerUri()).build();
 
         List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>();
-        validators.add(StringUtils.hasText(properties.getIssuerUri())
-                ? JwtValidators.createDefaultWithIssuer(properties.getIssuerUri())
+        validators.add(StringUtils.hasText(properties.getIssuerUri()) ? JwtValidators.createDefaultWithIssuer(properties.getIssuerUri())
                 : JwtValidators.createDefault());
         if (StringUtils.hasText(properties.getAudience())) {
             final String audience = properties.getAudience();
-            validators.add(token -> token.getAudience() != null && token.getAudience().contains(audience)
-                    ? OAuth2TokenValidatorResult.success()
-                    : OAuth2TokenValidatorResult.failure(
-                            new OAuth2Error("invalid_token", "Required audience '" + audience + "' is missing", null)));
+            validators.add(
+                    token -> token.getAudience() != null && token.getAudience().contains(audience) ? OAuth2TokenValidatorResult.success()
+                            : OAuth2TokenValidatorResult
+                                    .failure(new OAuth2Error("invalid_token", "Required audience '" + audience + "' is missing", null)));
         }
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(validators));
         return decoder;

@@ -36,23 +36,14 @@ public class TenantStoreRegistrationService {
 
     public Long register(RuntimeTenantRegistrationRequest request, String encryptedPassword, String masterPasswordHash) {
         if (isTenantRegistered(request.tenantIdentifier())) {
-            return findTenantConnectionId(request.tenantIdentifier()).orElseThrow(() -> new TenantRuntimeException(Response.Status.CONFLICT,
-                    "Tenant " + request.tenantIdentifier() + " exists without an OLTP connection"));
+            throw new TenantRuntimeException(Response.Status.CONFLICT, "Tenant " + request.tenantIdentifier() + " is already registered");
         }
-        Long connectionId = findReusableConnection(request)
-                .orElseGet(() -> insertConnection(request, encryptedPassword, masterPasswordHash));
+        Optional<Long> reusableConnection = findReusableConnection(request);
+        Long connectionId = reusableConnection.orElseGet(() -> insertConnection(request, encryptedPassword, masterPasswordHash));
         ensureConnectionIsUnassigned(request, connectionId);
+        reusableConnection.ifPresent(id -> updateReusableConnectionSecret(id, request, encryptedPassword, masterPasswordHash));
         insertTenant(request, connectionId);
         return connectionId;
-    }
-
-    private Optional<Long> findTenantConnectionId(String tenantIdentifier) {
-        try {
-            return Optional.ofNullable(
-                    jdbcTemplate.queryForObject("select oltp_id from tenants where identifier = ?", Long.class, tenantIdentifier));
-        } catch (EmptyResultDataAccessException e) {
-            return Optional.empty();
-        }
     }
 
     private Optional<Long> findReusableConnection(RuntimeTenantRegistrationRequest request) {
@@ -107,6 +98,17 @@ public class TenantStoreRegistrationService {
             throw new TenantRuntimeException(Response.Status.INTERNAL_SERVER_ERROR, "Tenant-store connection insert did not return an id");
         }
         return key.longValue();
+    }
+
+    private void updateReusableConnectionSecret(Long connectionId, RuntimeTenantRegistrationRequest request, String encryptedPassword,
+            String masterPasswordHash) {
+        jdbcTemplate.update("""
+                update tenant_server_connections
+                set schema_password = ?,
+                    schema_connection_parameters = ?,
+                    master_password_hash = ?
+                where id = ?
+                """, encryptedPassword, request.connectionParameters(), masterPasswordHash, connectionId);
     }
 
     private void ensureConnectionIsUnassigned(RuntimeTenantRegistrationRequest request, Long connectionId) {

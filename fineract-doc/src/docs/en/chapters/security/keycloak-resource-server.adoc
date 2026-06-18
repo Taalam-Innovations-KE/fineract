@@ -193,6 +193,64 @@ Configured in YAML
 |Required Keycloak actions assigned to provisioned users.
 |===
 
+=== Tenant Runtime Endpoint Properties
+
+Tenant runtime registration is provided by the custom tenant runtime module under the `taalam.tenant.runtime`
+configuration namespace. The endpoint is intended for the tenancy-management service, not for browser clients.
+
+[cols="2,1,3", options="header"]
+|===
+|Setting |Default |Purpose
+
+|`taalam.tenant.runtime.enabled`
+
+`TAALAM_TENANT_RUNTIME_ENABLED`
+|`false`
+|Enables `POST /api/v1/tenant-runtime/register-and-refresh` and `POST /api/v1/tenant-runtime/refresh-registered`.
+
+|`taalam.tenant.runtime.shared-secret`
+
+`TAALAM_TENANT_RUNTIME_SHARED_SECRET`
+|empty
+|Shared secret for the fallback `X-Tenant-Runtime-Secret` authentication mode. Used only when no runtime JWT issuer or JWK set URI is configured.
+
+|`taalam.tenant.runtime.jwk-set-uri`
+
+`TAALAM_TENANT_RUNTIME_JWK_SET_URI`
+|empty
+|JWK set URI used to validate bearer tokens from the tenancy-management service. Preferred for service-to-service authentication when the issuer is already known.
+
+|`taalam.tenant.runtime.issuer-uri`
+
+`TAALAM_TENANT_RUNTIME_ISSUER_URI`
+|empty
+|Issuer URI used for runtime endpoint bearer-token validation. If no JWK set URI is configured, Fineract discovers JWKs from this issuer.
+
+|`taalam.tenant.runtime.audience`
+
+`TAALAM_TENANT_RUNTIME_AUDIENCE`
+|empty
+|Optional required `aud` claim for tenant-runtime bearer tokens. Set this to the service client audience, for example `fineract-tenant-runtime`.
+
+|`taalam.tenant.runtime.authentication-verification-enabled`
+
+`TAALAM_TENANT_RUNTIME_AUTHENTICATION_VERIFICATION_ENABLED`
+|`false`
+|After migration/cache refresh, optionally verifies a configured Fineract username/password against the tenant runtime datasource.
+
+|`taalam.tenant.runtime.authentication-verification-username`
+
+`TAALAM_TENANT_RUNTIME_AUTHENTICATION_VERIFICATION_USERNAME`
+|`mifos`
+|Username used only when authentication verification is enabled.
+
+|`taalam.tenant.runtime.authentication-verification-password`
+
+`TAALAM_TENANT_RUNTIME_AUTHENTICATION_VERIFICATION_PASSWORD`
+|`password`
+|Password used only when authentication verification is enabled.
+|===
+
 === Minimal Container Environment
 
 [source,bash]
@@ -211,9 +269,18 @@ FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ADMIN_REALM=master
 FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ADMIN_CLIENT_ID=fineract-admin
 FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_ADMIN_CLIENT_SECRET=<secret>
 FINERACT_SECURITY_OAUTH2_EXTERNAL_PROVISIONING_SEND_ACTIONS_EMAIL=true
+
+TAALAM_TENANT_RUNTIME_ENABLED=true
+TAALAM_TENANT_RUNTIME_ISSUER_URI=http://keycloak:8080/realms/platform
+TAALAM_TENANT_RUNTIME_JWK_SET_URI=http://keycloak:8080/realms/platform/protocol/openid-connect/certs
+TAALAM_TENANT_RUNTIME_AUDIENCE=fineract-tenant-runtime
 ----
 
 NOTE: The admin realm can be `master` or a tenant realm, depending on where the admin service account is created. The service account must have permission to manage users in each target tenant realm.
+
+If the deployment still uses the fallback shared-secret authentication for the tenant runtime endpoint, omit
+`TAALAM_TENANT_RUNTIME_ISSUER_URI`, `TAALAM_TENANT_RUNTIME_JWK_SET_URI`, and `TAALAM_TENANT_RUNTIME_AUDIENCE`, and set
+`TAALAM_TENANT_RUNTIME_SHARED_SECRET` to the same value configured in the tenancy-management service.
 
 == Keycloak Configuration
 
@@ -223,9 +290,57 @@ When external OAuth mode is enabled, tenant runtime registration creates or repa
 
 If Keycloak is unavailable, or the configured admin service account cannot create realms, manage clients, or manage users, tenant registration fails and the tenant is not reported as ready.
 
+=== Tenant Runtime Operations
+
+The runtime API is mounted below the Fineract context path:
+
+* `POST /fineract-provider/api/v1/tenant-runtime/register-and-refresh`
+* `POST /fineract-provider/api/v1/tenant-runtime/refresh-registered`
+
+Both operations are synchronous from Fineract's point of view. The tenancy-management service should call them from its
+asynchronous provisioning or reconciliation jobs and use its own success/failure callbacks to update control-plane state.
+
+`register-and-refresh` is used only when the tenancy-management service has created or attached the tenant database and
+runtime database role and has the plaintext runtime password. Fineract:
+
+. validates that the requested database type matches the configured Fineract runtime database type;
+. inserts the tenant-store connection and tenant rows, encrypting the runtime password with Fineract's tenant master password;
+. on retry, validates that an already registered tenant still points at the requested database, host, port, and runtime username;
+. creates or repairs the Keycloak tenant realm and clients when Keycloak provisioning is enabled;
+. runs Liquibase against the tenant database;
+. clears tenant runtime caches and warms the tenant datasource;
+. optionally verifies configured Fineract authentication against the tenant datasource.
+
+`refresh-registered` is used for reconciliation of an existing Fineract tenant-store row. It is password-free and never
+updates `schema_username`, `schema_password`, or `master_password_hash`. Fineract:
+
+. loads the registered tenant-store row;
+. rejects the request if the registered database name does not match `database_name`;
+. creates or repairs the Keycloak tenant realm and clients when Keycloak provisioning is enabled;
+. runs Liquibase, clears runtime caches, warms the datasource, and optionally verifies authentication.
+
+The common success response is:
+
+[source,json]
+----
+{
+  "tenant_identifier": "acme-ke",
+  "database_name": "fineract_acme_ke",
+  "registered": true,
+  "migrated": true,
+  "refreshed": true,
+  "authentication_verified": false,
+  "status": "READY",
+  "completed_at": "2026-06-18T12:00:00Z"
+}
+----
+
+`registered` is `true` only when Fineract inserted the tenant-store tenant row during `register-and-refresh`. It is
+`false` for `refresh-registered` and idempotent retries against an already registered tenant.
+
 === Automatic Tenant Realm Provisioning
 
-During `POST /tenant-runtime/register-and-refresh`, Fineract ensures the tenant realm has:
+During tenant runtime registration and reconciliation, Fineract ensures the tenant realm has:
 
 * realm enabled;
 * `editUsernameAllowed=true`;
@@ -334,9 +449,10 @@ docker exec fineract-keycloak-e2e-keycloak /opt/keycloak/bin/kcadm.sh \
 
 Create the configured admin service-account client, for example `fineract-admin`, in the admin realm. Grant it enough admin permissions to create realms, manage tenant realm clients, and manage tenant realm users.
 
-=== Register or Refresh the Tenant
+=== Register a New Tenant
 
-Call tenant runtime registration with the target tenant details. In external OAuth mode, this creates or repairs the matching Keycloak realm before returning `READY`.
+Call tenant runtime registration with the target tenant details. In external OAuth mode, this creates or repairs the
+matching Keycloak realm before returning `READY`.
 
 [source,bash]
 ----
@@ -356,6 +472,35 @@ curl -ksS \
   }' \
   "https://localhost:18443/fineract-provider/api/v1/tenant-runtime/register-and-refresh"
 ----
+
+For JWT-protected tenant runtime endpoints, replace the shared-secret header with:
+
+[source,bash]
+----
+-H "Authorization: Bearer ${TENANT_RUNTIME_SERVICE_TOKEN}"
+----
+
+=== Reconcile an Existing Registered Tenant
+
+Use `refresh-registered` when the tenant already exists in Fineract's tenant store and the tenancy-management service is
+only reconciling metadata and runtime readiness. Do not send runtime credentials to this endpoint.
+
+[source,bash]
+----
+curl -ksS \
+  -H "Authorization: Bearer ${TENANT_RUNTIME_SERVICE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  --data '{
+    "tenant_identifier": "default",
+    "display_name": "Default",
+    "timezone": "Africa/Nairobi",
+    "database_name": "<tenant-database>"
+  }' \
+  "https://localhost:18443/fineract-provider/api/v1/tenant-runtime/refresh-registered"
+----
+
+If the tenant-store database name differs from `database_name`, Fineract returns a conflict. The tenancy-management
+service should record that as a reconciliation gap and require operator remediation instead of rewriting credentials.
 
 Verify the realm exists:
 

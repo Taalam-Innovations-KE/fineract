@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -17,6 +18,7 @@ import static org.mockito.Mockito.when;
 import java.sql.Connection;
 import java.util.List;
 import javax.sql.DataSource;
+import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRefreshRegisteredRequest;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRegistrationRequest;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRegistrationResponse;
 import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenant;
@@ -87,10 +89,16 @@ class TenantRuntimeRefreshServiceTest {
     }
 
     @Test
-    void registerAndRefreshFailsBeforeMigrationWhenIdentityProviderProvisioningFails() {
+    void registerAndRefreshFailsAfterRegistrationAndBeforeMigrationWhenIdentityProviderProvisioningFails() {
         RuntimeTenantRegistrationRequest request = new RuntimeTenantRegistrationRequest("new_ke", "New Kenya Tenant", "Africa/Nairobi",
                 "POSTGRESQL", "localhost", 5432, "fineract_new_ke", "fineract_new_ke", "tenant-password", null);
+        FineractPlatformTenant runtimeTenant = tenant("new_ke", 33L);
+        when(databasePasswordEncryptor.encrypt("tenant-password")).thenReturn("encrypted-password");
+        when(databasePasswordEncryptor.getMasterPasswordHash()).thenReturn("master-password-hash");
         when(databaseTypeResolver.databaseType()).thenReturn(DatabaseType.POSTGRESQL);
+        when(tenantStoreRegistrationService.isTenantRegistered("new_ke")).thenReturn(false);
+        when(tenantStoreRegistrationService.register(eq(request), eq("encrypted-password"), eq("master-password-hash"))).thenReturn(33L);
+        when(tenantDetailsService.loadTenantById("new_ke")).thenReturn(runtimeTenant);
         org.mockito.Mockito.doThrow(new IllegalStateException("keycloak unavailable")).when(identityProviderProvisioningService)
                 .ensureTenant(request);
         TenantRuntimeRefreshService underTest = new TenantRuntimeRefreshService(databasePasswordEncryptor, databaseTypeResolver,
@@ -101,8 +109,54 @@ class TenantRuntimeRefreshServiceTest {
                 .hasMessageContaining("Tenant identity provider provisioning failed for tenant new_ke");
 
         verify(identityProviderProvisioningService).ensureTenant(request);
-        verifyNoInteractions(migrationService, tenantStoreRegistrationService, tenantDetailsService, routingDataSource,
-                authenticationVerifier);
+        verify(tenantStoreRegistrationService).register(eq(request), eq("encrypted-password"), eq("master-password-hash"));
+        verifyNoInteractions(migrationService, routingDataSource, authenticationVerifier);
+    }
+
+    @Test
+    void registerAndRefreshRejectsExistingTenantDatabaseMismatch() {
+        RuntimeTenantRegistrationRequest request = new RuntimeTenantRegistrationRequest("new_ke", "New Kenya Tenant", "Africa/Nairobi",
+                "POSTGRESQL", "localhost", 5432, "fineract_wrong", "fineract_new_ke", "tenant-password", null);
+        when(databaseTypeResolver.databaseType()).thenReturn(DatabaseType.POSTGRESQL);
+        when(tenantStoreRegistrationService.isTenantRegistered("new_ke")).thenReturn(true);
+        when(tenantDetailsService.loadTenantById("new_ke")).thenReturn(tenant("new_ke", 33L));
+        TenantRuntimeRefreshService underTest = new TenantRuntimeRefreshService(databasePasswordEncryptor, databaseTypeResolver,
+                migrationService, tenantStoreRegistrationService, cacheService, tenantDetailsService, routingDataSource,
+                authenticationVerifier, List.of(identityProviderProvisioningService));
+
+        assertThatThrownBy(() -> underTest.registerAndRefresh(request)).isInstanceOf(TenantRuntimeException.class)
+                .hasMessageContaining("database_name");
+
+        verify(tenantStoreRegistrationService, never()).register(any(), any(), any());
+        verifyNoInteractions(identityProviderProvisioningService, migrationService, routingDataSource, authenticationVerifier);
+    }
+
+    @Test
+    void refreshRegisteredMigratesExistingTenantWithoutRuntimePassword() throws Exception {
+        RuntimeTenantRefreshRegisteredRequest request = new RuntimeTenantRefreshRegisteredRequest("new_ke", "New Kenya Tenant",
+                "Africa/Nairobi", "fineract_new_ke");
+        FineractPlatformTenant runtimeTenant = tenant("new_ke", 33L);
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        when(databaseTypeResolver.databaseType()).thenReturn(DatabaseType.POSTGRESQL);
+        when(migrationService.migrate(runtimeTenant)).thenReturn(true);
+        when(tenantDetailsService.loadTenantById("new_ke")).thenReturn(runtimeTenant);
+        when(routingDataSource.determineTargetDataSource()).thenReturn(dataSource);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(authenticationVerifier.verifyIfEnabled(runtimeTenant)).thenReturn(false);
+        TenantRuntimeRefreshService underTest = new TenantRuntimeRefreshService(databasePasswordEncryptor, databaseTypeResolver,
+                migrationService, tenantStoreRegistrationService, cacheService, tenantDetailsService, routingDataSource,
+                authenticationVerifier, List.of(identityProviderProvisioningService));
+
+        RuntimeTenantRegistrationResponse response = underTest.refreshRegistered(request);
+
+        assertThat(response.tenantIdentifier()).isEqualTo("new_ke");
+        assertThat(response.databaseName()).isEqualTo("fineract_new_ke");
+        assertThat(response.registered()).isFalse();
+        assertThat(response.migrated()).isTrue();
+        verify(tenantStoreRegistrationService, never()).register(any(), any(), any());
+        verify(migrationService).migrate(runtimeTenant);
+        verify(authenticationVerifier).verifyIfEnabled(runtimeTenant);
     }
 
     private FineractPlatformTenant tenant(String identifier, Long connectionId) {

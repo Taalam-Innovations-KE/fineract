@@ -42,6 +42,22 @@ public class TenantRuntimeApiResource {
         }
     }
 
+    @POST
+    @Path("/refresh-registered")
+    @Consumes({ MediaType.APPLICATION_JSON })
+    @Produces({ MediaType.APPLICATION_JSON })
+    public String refreshRegistered(String requestBody) {
+        try {
+            RuntimeTenantRefreshRegisteredRequest request = objectMapper.readValue(requestBody,
+                    RuntimeTenantRefreshRegisteredRequest.class);
+            return objectMapper.writeValueAsString(tenantRuntimeRefreshService.refreshRegistered(request));
+        } catch (TenantRuntimeException e) {
+            throw toWebApplicationException(e.getStatus(), e.getMessage(), e);
+        } catch (JsonProcessingException e) {
+            throw toWebApplicationException(Response.Status.BAD_REQUEST, "Invalid tenant runtime request JSON", e);
+        }
+    }
+
     private WebApplicationException toWebApplicationException(Response.Status status, String message, Throwable cause) {
         try {
             String body = objectMapper.writeValueAsString(Map.of("status", status.getStatusCode(), "message", message));

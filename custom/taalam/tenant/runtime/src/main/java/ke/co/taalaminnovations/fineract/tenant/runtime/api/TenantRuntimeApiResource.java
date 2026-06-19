@@ -7,15 +7,19 @@ package ke.co.taalaminnovations.fineract.tenant.runtime.api;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DefaultValue;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.Map;
 import ke.co.taalaminnovations.fineract.tenant.runtime.service.TenantRuntimeException;
 import ke.co.taalaminnovations.fineract.tenant.runtime.service.TenantRuntimeRefreshService;
+import ke.co.taalaminnovations.fineract.tenant.runtime.service.TenantRuntimeUserExportService;
 import ke.co.taalaminnovations.fineract.tenant.runtime.service.TenantRuntimeUserSyncService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -28,6 +32,7 @@ public class TenantRuntimeApiResource {
     private final ObjectMapper objectMapper;
     private final TenantRuntimeRefreshService tenantRuntimeRefreshService;
     private final TenantRuntimeUserSyncService tenantRuntimeUserSyncService;
+    private final TenantRuntimeUserExportService tenantRuntimeUserExportService;
 
     @POST
     @Path("/register-and-refresh")
@@ -72,6 +77,25 @@ public class TenantRuntimeApiResource {
             throw toWebApplicationException(e.getStatus(), e.getMessage(), e);
         } catch (JsonProcessingException e) {
             throw toWebApplicationException(Response.Status.BAD_REQUEST, "Invalid tenant runtime user sync request JSON", e);
+        }
+    }
+
+    @GET
+    @Path("/users/export")
+    @Produces({ MediaType.APPLICATION_JSON })
+    public String exportUsers(@QueryParam("tenant_identifier") String tenantIdentifier, @QueryParam("database_name") String databaseName,
+            @DefaultValue("false") @QueryParam("include_disabled") boolean includeDisabled,
+            @DefaultValue("false") @QueryParam("include_deleted") boolean includeDeleted,
+            @DefaultValue("false") @QueryParam("include_system_users") boolean includeSystemUsers) {
+        try {
+            TenantRuntimeUserExportRequest request = new TenantRuntimeUserExportRequest(tenantIdentifier, databaseName, includeDisabled,
+                    includeDeleted, includeSystemUsers);
+            return objectMapper.writeValueAsString(tenantRuntimeUserExportService.exportUsers(request));
+        } catch (TenantRuntimeException e) {
+            throw toWebApplicationException(e.getStatus(), e.getMessage(), e);
+        } catch (JsonProcessingException e) {
+            throw toWebApplicationException(Response.Status.INTERNAL_SERVER_ERROR,
+                    "Unable to serialize tenant runtime user export response", e);
         }
     }
 

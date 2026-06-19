@@ -206,7 +206,7 @@ configuration namespace. The endpoint is intended for the tenancy-management ser
 
 `TAALAM_TENANT_RUNTIME_ENABLED`
 |`false`
-|Enables `POST /api/v1/tenant-runtime/register-and-refresh` and `POST /api/v1/tenant-runtime/refresh-registered`.
+|Enables the tenant runtime service endpoints under `/api/v1/tenant-runtime`, including tenant refresh and user import/export operations.
 
 |`taalam.tenant.runtime.shared-secret`
 
@@ -296,9 +296,10 @@ The runtime API is mounted below the Fineract context path:
 
 * `POST /fineract-provider/api/v1/tenant-runtime/register-and-refresh`
 * `POST /fineract-provider/api/v1/tenant-runtime/refresh-registered`
+* `GET /fineract-provider/api/v1/tenant-runtime/users/export`
 * `POST /fineract-provider/api/v1/tenant-runtime/users/sync`
 
-Both operations are synchronous from Fineract's point of view. The tenancy-management service should call them from its
+These operations are synchronous from Fineract's point of view. The tenancy-management service should call them from its
 asynchronous provisioning or reconciliation jobs and use its own success/failure callbacks to update control-plane state.
 
 `register-and-refresh` is used only when the tenancy-management service has created or attached the tenant database and
@@ -320,6 +321,67 @@ updates `schema_username`, `schema_password`, or `master_password_hash`. Finerac
 . rejects the request if the registered database name does not match `database_name`;
 . creates or repairs the Keycloak tenant realm and clients when Keycloak provisioning is enabled;
 . runs Liquibase, clears runtime caches, warms the datasource, and optionally verifies authentication.
+
+`users/export` is used by the tenancy-management service to import already-existing Fineract tenant users into the
+control-plane identity store and then into the tenant Keycloak realm. This is the recommended reverse path for existing
+tenants:
+
+. tenancy-management calls Fineract `users/export` for the tenant;
+. tenancy-management imports returned users into `identity_users`;
+. tenancy-management creates `identity_user_tenant_roles` using its own Fineract-role-to-control-plane-role mapping;
+. tenancy-management provisions each imported user into the matching tenant Keycloak realm.
+
+Fineract does not map Fineract roles to tenant-management roles in this endpoint. It exports Fineract role names only.
+For example, tenancy-management may map Fineract `Super user` to `Tenant Administrator` and map unmapped Fineract roles
+to a safe default such as `Tenant Viewer`.
+
+By default, `users/export` returns active real users only. It excludes deleted users, disabled users, and known service
+users (`system`, `interopUser`). The caller can opt into a broader export with `include_disabled=true`,
+`include_deleted=true`, and `include_system_users=true`.
+
+Example user export request:
+
+[source,bash]
+----
+curl -ksS \
+  -H "Authorization: Bearer ${TENANT_RUNTIME_TOKEN}" \
+  "https://localhost:18443/fineract-provider/api/v1/tenant-runtime/users/export?tenant_identifier=default"
+----
+
+Example user export response:
+
+[source,json]
+----
+{
+  "tenant_identifier": "default",
+  "database_name": "fineract_default",
+  "total_fineract_users": 3,
+  "exported": 1,
+  "skipped": 2,
+  "users": [
+    {
+      "source_user_id": "1",
+      "fineract_user_id": 1,
+      "username": "mifos",
+      "email": "demomfi@mifos.org",
+      "first_name": "App",
+      "last_name": "Administrator",
+      "display_name": "App Administrator",
+      "enabled": true,
+      "deleted": false,
+      "active": true,
+      "office_id": 1,
+      "office_name": "Head Office",
+      "office_external_id": null,
+      "staff_id": null,
+      "staff_display_name": null,
+      "staff_external_id": null,
+      "role_names": ["Super user"]
+    }
+  ],
+  "exported_at": "2026-06-19T12:00:00Z"
+}
+----
 
 `users/sync` is used by the tenancy-management service to create or reconcile tenant users after tenant creation or
 during control-plane reconciliation. Fineract:

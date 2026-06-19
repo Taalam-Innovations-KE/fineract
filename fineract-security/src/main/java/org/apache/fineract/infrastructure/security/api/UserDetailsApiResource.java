@@ -41,7 +41,7 @@ import org.apache.fineract.useradministration.data.RoleData;
 import org.apache.fineract.useradministration.domain.AppUser;
 import org.apache.fineract.useradministration.domain.Role;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -52,7 +52,7 @@ import org.springframework.stereotype.Component;
  */
 @Path("/v1/userdetails")
 @Component
-@ConditionalOnProperty("fineract.security.oauth2.enabled")
+@ConditionalOnExpression("${fineract.security.oauth2.enabled:false} || ${fineract.security.oauth2.external.enabled:false}")
 @Tag(name = "Fetch authenticated user details", description = "")
 @RequiredArgsConstructor
 public class UserDetailsApiResource {

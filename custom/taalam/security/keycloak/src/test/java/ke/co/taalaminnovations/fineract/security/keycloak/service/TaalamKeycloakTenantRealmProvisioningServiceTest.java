@@ -91,7 +91,8 @@ class TaalamKeycloakTenantRealmProvisioningServiceTest {
         assertThat(clientCaptor.getValue().isDirectAccessGrantsEnabled()).isTrue();
 
         ArgumentCaptor<ProtocolMapperRepresentation> mapperCaptor = ArgumentCaptor.forClass(ProtocolMapperRepresentation.class);
-        org.mockito.Mockito.verify(resourceServerProtocolMappersResource, org.mockito.Mockito.times(3)).createMapper(mapperCaptor.capture());
+        org.mockito.Mockito.verify(resourceServerProtocolMappersResource, org.mockito.Mockito.times(3))
+                .createMapper(mapperCaptor.capture());
         assertThat(mapperCaptor.getAllValues()).extracting(ProtocolMapperRepresentation::getName).containsExactly("fineract-audience",
                 "fineract-username", "fineract-email");
         verify(clientsResource, never()).findByClientId("fineract-ui");
@@ -116,8 +117,8 @@ class TaalamKeycloakTenantRealmProvisioningServiceTest {
         when(clientsResource.findByClientId("fineract")).thenReturn(List.of(existingClient));
         when(clientsResource.get("kc-client-id")).thenReturn(resourceServerClientResource);
         when(resourceServerClientResource.toRepresentation()).thenReturn(existingClient);
-        when(resourceServerProtocolMappersResource.getMappersPerProtocol("openid-connect")).thenReturn(List.of(existingMapper)).thenReturn(List.of())
-                .thenReturn(List.of());
+        when(resourceServerProtocolMappersResource.getMappersPerProtocol("openid-connect")).thenReturn(List.of(existingMapper))
+                .thenReturn(List.of()).thenReturn(List.of());
 
         underTest.ensureTenant(request);
 
@@ -155,8 +156,8 @@ class TaalamKeycloakTenantRealmProvisioningServiceTest {
         assertThat(uiClient.isServiceAccountsEnabled()).isFalse();
         assertThat(uiClient.getRedirectUris()).containsExactly("https://app.example.org/api/auth/callback/keycloak");
         assertThat(uiClient.getWebOrigins()).containsExactly("https://app.example.org");
-        assertThat(uiClient.getAttributes()).containsEntry("pkce.code.challenge.method", "S256")
-                .containsEntry("post.logout.redirect.uris", "https://app.example.org/*");
+        assertThat(uiClient.getAttributes()).containsEntry("pkce.code.challenge.method", "S256").containsEntry("post.logout.redirect.uris",
+                "https://app.example.org/*");
 
         ArgumentCaptor<ProtocolMapperRepresentation> uiMapperCaptor = ArgumentCaptor.forClass(ProtocolMapperRepresentation.class);
         verify(uiProtocolMappersResource).createMapper(uiMapperCaptor.capture());

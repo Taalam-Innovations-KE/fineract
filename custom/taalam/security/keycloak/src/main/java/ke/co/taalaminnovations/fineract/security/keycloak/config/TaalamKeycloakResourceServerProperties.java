@@ -46,6 +46,7 @@ public class TaalamKeycloakResourceServerProperties {
         private boolean syncUsernameOnEmailMatch = true;
         private List<String> requiredActions = List.of("UPDATE_PASSWORD");
         private UiClient uiClient = new UiClient();
+        private BffClient bffClient = new BffClient();
     }
 
     @Getter
@@ -54,5 +55,21 @@ public class TaalamKeycloakResourceServerProperties {
 
         private String clientId = "fineract-ui";
         private String baseUrl;
+    }
+
+    @Getter
+    @Setter
+    public static final class BffClient {
+
+        private boolean enabled;
+        private String clientId = "pato-mobile-bff";
+        private String provisioningUrl;
+        private String provisioningApiKey;
+        private String fineractBaseUrl;
+        private String serviceTokenAudience;
+        private Long defaultOfficeId = 1L;
+        private Long defaultLegalFormId = 1L;
+        private String dateFormat = "yyyy-MM-dd";
+        private String locale = "en";
     }
 }

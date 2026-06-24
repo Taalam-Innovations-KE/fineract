@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import ke.co.taalaminnovations.fineract.security.keycloak.config.TaalamKeycloakResourceServerProperties;
+import ke.co.taalaminnovations.fineract.security.keycloak.config.TaalamKeycloakResourceServerProperties.BffClient;
 import ke.co.taalaminnovations.fineract.security.keycloak.config.TaalamKeycloakResourceServerProperties.Provisioning;
 import ke.co.taalaminnovations.fineract.security.keycloak.config.TaalamKeycloakResourceServerProperties.UiClient;
 import ke.co.taalaminnovations.fineract.tenant.runtime.api.RuntimeTenantRegistrationRequest;
@@ -24,11 +25,17 @@ import org.keycloak.admin.client.resource.ClientsResource;
 import org.keycloak.admin.client.resource.ProtocolMappersResource;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.representations.idm.ClientRepresentation;
+import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestTemplate;
 
 @Service
 @RequiredArgsConstructor
@@ -44,9 +51,11 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
     private static final String FINERACT_AUDIENCE_MAPPER_NAME = "fineract-audience";
     private static final String FINERACT_USERNAME_MAPPER_NAME = "fineract-username";
     private static final String FINERACT_EMAIL_MAPPER_NAME = "fineract-email";
+    private static final String BFF_PROVISIONING_HEADER = "X-BFF-Provisioning-Key";
 
     private final TaalamKeycloakResourceServerProperties properties;
     private final TaalamKeycloakAdminClientFactory keycloakClientFactory;
+    private final RestTemplate restTemplate = new RestTemplate();
 
     @Override
     public void ensureTenant(final RuntimeTenantRegistrationRequest request) {
@@ -68,6 +77,8 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
                 final ClientResource uiClient = ensureUiClient(clients, provisioning.getUiClient(), uiClientBaseUrl);
                 ensureProtocolMapper(uiClient, audienceMapper(properties.getAudience()));
             }
+
+            ensureBffClientAndShareCredentials(request, clients);
         }
     }
 
@@ -96,6 +107,26 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
         }
         if (StringUtils.hasText(normalizedUiClientBaseUrl()) && !StringUtils.hasText(provisioning.getUiClient().getClientId())) {
             throw new IllegalStateException("Keycloak UI client provisioning is enabled but ui-client.client-id is not configured");
+        }
+        final BffClient bffClient = provisioning.getBffClient();
+        if (bffClient != null && bffClient.isEnabled()) {
+            if (!StringUtils.hasText(bffClient.getClientId())) {
+                throw new IllegalStateException("Keycloak BFF client provisioning is enabled but bff-client.client-id is not configured");
+            }
+            if (!StringUtils.hasText(bffClient.getProvisioningUrl())) {
+                throw new IllegalStateException(
+                        "Keycloak BFF client provisioning is enabled but bff-client.provisioning-url is not configured");
+            }
+            if (!StringUtils.hasText(bffClient.getProvisioningApiKey())) {
+                throw new IllegalStateException(
+                        "Keycloak BFF client provisioning is enabled but bff-client.provisioning-api-key is not configured");
+            }
+            if (!StringUtils.hasText(bffClient.getFineractBaseUrl())) {
+                throw new IllegalStateException(
+                        "Keycloak BFF client provisioning is enabled but bff-client.fineract-base-url is not configured");
+            }
+            validateAbsoluteHttpUrl(trimTrailingSlash(bffClient.getProvisioningUrl()), "Keycloak BFF provisioning URL");
+            validateAbsoluteHttpUrl(trimTrailingSlash(bffClient.getFineractBaseUrl()), "BFF Fineract base URL");
         }
     }
 
@@ -276,6 +307,75 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
         return client;
     }
 
+    private void ensureBffClientAndShareCredentials(final RuntimeTenantRegistrationRequest request, final ClientsResource clients) {
+        final BffClient bffClient = properties.getProvisioning().getBffClient();
+        if (bffClient == null || !bffClient.isEnabled()) {
+            return;
+        }
+        final ClientResource client = ensureBffClient(clients, bffClient);
+        ensureProtocolMapper(client, audienceMapper(properties.getAudience()));
+        shareBffClientCredentials(request, bffClient, clientSecret(client));
+    }
+
+    private ClientResource ensureBffClient(final ClientsResource clients, final BffClient bffClient) {
+        final String clientId = bffClient.getClientId().trim();
+        Optional<ClientRepresentation> existingClient = findSingleClient(clients, clientId);
+        if (existingClient.isEmpty()) {
+            createClient(clients, bffClientRepresentation(clientId));
+            existingClient = findSingleClient(clients, clientId);
+        }
+
+        final ClientRepresentation clientRepresentation = existingClient
+                .orElseThrow(() -> new IllegalStateException("Keycloak client " + clientId + " was not found after creation"));
+        final ClientResource client = clients.get(clientRepresentation.getId());
+        final ClientRepresentation current = client.toRepresentation();
+        boolean changed = false;
+        if (!Boolean.TRUE.equals(current.isEnabled())) {
+            current.setEnabled(true);
+            changed = true;
+        }
+        if (!OPENID_CONNECT.equals(current.getProtocol())) {
+            current.setProtocol(OPENID_CONNECT);
+            changed = true;
+        }
+        if (!"client-secret".equals(current.getClientAuthenticatorType())) {
+            current.setClientAuthenticatorType("client-secret");
+            changed = true;
+        }
+        if (!Boolean.FALSE.equals(current.isPublicClient())) {
+            current.setPublicClient(false);
+            changed = true;
+        }
+        if (!Boolean.FALSE.equals(current.isBearerOnly())) {
+            current.setBearerOnly(false);
+            changed = true;
+        }
+        if (!Boolean.FALSE.equals(current.isStandardFlowEnabled())) {
+            current.setStandardFlowEnabled(false);
+            changed = true;
+        }
+        if (!Boolean.FALSE.equals(current.isDirectAccessGrantsEnabled())) {
+            current.setDirectAccessGrantsEnabled(false);
+            changed = true;
+        }
+        if (!Boolean.FALSE.equals(current.isImplicitFlowEnabled())) {
+            current.setImplicitFlowEnabled(false);
+            changed = true;
+        }
+        if (!Boolean.TRUE.equals(current.isServiceAccountsEnabled())) {
+            current.setServiceAccountsEnabled(true);
+            changed = true;
+        }
+        if (!Boolean.TRUE.equals(current.isFullScopeAllowed())) {
+            current.setFullScopeAllowed(true);
+            changed = true;
+        }
+        if (changed) {
+            client.update(current);
+        }
+        return client;
+    }
+
     private Optional<ClientRepresentation> findSingleClient(final ClientsResource clients, final String clientId) {
         final List<ClientRepresentation> matches = clients.findByClientId(clientId);
         final List<ClientRepresentation> safeMatches = matches == null ? List.of() : matches;
@@ -329,6 +429,67 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
         client.setWebOrigins(uiWebOrigins(baseUrl));
         client.setAttributes(uiClientAttributes(baseUrl));
         return client;
+    }
+
+    private ClientRepresentation bffClientRepresentation(final String clientId) {
+        final ClientRepresentation client = new ClientRepresentation();
+        client.setClientId(clientId);
+        client.setName("Mobile BFF");
+        client.setProtocol(OPENID_CONNECT);
+        client.setClientAuthenticatorType("client-secret");
+        client.setEnabled(true);
+        client.setPublicClient(false);
+        client.setBearerOnly(false);
+        client.setStandardFlowEnabled(false);
+        client.setDirectAccessGrantsEnabled(false);
+        client.setImplicitFlowEnabled(false);
+        client.setServiceAccountsEnabled(true);
+        client.setFullScopeAllowed(true);
+        return client;
+    }
+
+    private String clientSecret(final ClientResource client) {
+        CredentialRepresentation credential = client.getSecret();
+        if (credential == null || !StringUtils.hasText(credential.getValue())) {
+            credential = client.generateNewSecret();
+        }
+        if (credential == null || !StringUtils.hasText(credential.getValue())) {
+            throw new IllegalStateException("Keycloak BFF client secret was empty after creation");
+        }
+        return credential.getValue();
+    }
+
+    private void shareBffClientCredentials(final RuntimeTenantRegistrationRequest request, final BffClient bffClient,
+            final String clientSecret) {
+        final HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set(BFF_PROVISIONING_HEADER, bffClient.getProvisioningApiKey().trim());
+
+        final BffTenantProvisioningRequest provisioningRequest = new BffTenantProvisioningRequest(request.tenantIdentifier(),
+                issuerUri(request.tenantIdentifier()), tokenUrl(request.tenantIdentifier()), bffClient.getClientId().trim(), clientSecret,
+                serviceTokenAudience(bffClient), trimTrailingSlash(bffClient.getFineractBaseUrl()), request.tenantIdentifier(),
+                bffClient.getDefaultOfficeId(), bffClient.getDefaultLegalFormId(), defaultString(bffClient.getDateFormat(), "yyyy-MM-dd"),
+                defaultString(bffClient.getLocale(), "en"), "keycloak-client-secret");
+
+        try {
+            restTemplate.postForEntity(trimTrailingSlash(bffClient.getProvisioningUrl()), new HttpEntity<>(provisioningRequest, headers),
+                    String.class);
+        } catch (RestClientException e) {
+            throw new IllegalStateException("BFF tenant backend provisioning failed for tenant " + request.tenantIdentifier(), e);
+        }
+    }
+
+    private String issuerUri(final String tenantIdentifier) {
+        return properties.normalizedKeycloakBaseUrl() + "/realms/" + tenantIdentifier;
+    }
+
+    private String tokenUrl(final String tenantIdentifier) {
+        return issuerUri(tenantIdentifier) + "/protocol/openid-connect/token";
+    }
+
+    private String serviceTokenAudience(final BffClient bffClient) {
+        return StringUtils.hasText(bffClient.getServiceTokenAudience()) ? bffClient.getServiceTokenAudience().trim()
+                : properties.getAudience();
     }
 
     private boolean ensureUiClientAttributes(final ClientRepresentation client, final String baseUrl) {
@@ -426,16 +587,37 @@ public class TaalamKeycloakTenantRealmProvisioningService implements TenantIdent
     }
 
     private void validateUiClientBaseUrl(final String baseUrl) {
+        validateAbsoluteHttpUrl(baseUrl, "Keycloak UI client base-url");
+    }
+
+    private void validateAbsoluteHttpUrl(final String baseUrl, final String label) {
         final URI uri;
         try {
             uri = URI.create(baseUrl);
         } catch (IllegalArgumentException e) {
-            throw new IllegalStateException("Keycloak UI client base-url must be a valid absolute http(s) URL", e);
+            throw new IllegalStateException(label + " must be a valid absolute http(s) URL", e);
         }
         final String scheme = uri.getScheme();
         if (!uri.isAbsolute() || !StringUtils.hasText(uri.getHost())
                 || (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme))) {
-            throw new IllegalStateException("Keycloak UI client base-url must be a valid absolute http(s) URL");
+            throw new IllegalStateException(label + " must be a valid absolute http(s) URL");
         }
+    }
+
+    private String trimTrailingSlash(final String value) {
+        String result = value.trim();
+        while (result.endsWith("/") && result.length() > 1) {
+            result = result.substring(0, result.length() - 1);
+        }
+        return result;
+    }
+
+    private String defaultString(final String value, final String fallback) {
+        return StringUtils.hasText(value) ? value.trim() : fallback;
+    }
+
+    private record BffTenantProvisioningRequest(String tenantId, String issuerUri, String tokenUrl, String serviceClientId,
+            String serviceClientSecret, String serviceTokenAudience, String fineractBaseUrl, String fineractTenantId, Long defaultOfficeId,
+            Long defaultLegalFormId, String dateFormat, String locale, String secretVersion) {
     }
 }

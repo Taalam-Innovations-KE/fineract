@@ -60,23 +60,14 @@ jib {
     dependencies {
         implementation project(':fineract-core')
         implementation project(':fineract-provider')
-        // NOTE: dynamically load custom modules. Skip non-module dirs and the upstream
-        // 'acme'/'docs' samples (acme ships a demo changelog that inserts a job row without
-        // short_name, which violates the current NOT NULL constraint and breaks migration).
-        def excludedCompanies = ['build', 'docker', 'docs', 'acme'] as Set
+        // NOTE: dynamically load all custom modules
         file("${rootDir}/custom").eachDir { companyDir ->
-            if(!excludedCompanies.contains(companyDir.name)) {
+            if('build' != companyDir.name && 'docker' != companyDir.name) {
                 file("${rootDir}/custom/${companyDir.name}").eachDir { categoryDir ->
                     if('build' != categoryDir.name) {
                         file("${rootDir}/custom/${companyDir.name}/${categoryDir.name}").eachDir { moduleDir ->
                             if('build' != moduleDir.name) {
-                                // Exclude org.apache.fineract: fineract-core/provider are already
-                                // direct deps here. Pulling them in transitively (incl. the -plain
-                                // jar) duplicates application.properties and breaks property binding
-                                // (e.g. fineract.mode -> NullPointerException) and Liquibase lookup.
-                                implementation(project(":custom:${companyDir.name}:${categoryDir.name}:${moduleDir.name}")) {
-                                    exclude group: 'org.apache.fineract'
-                                }
+                                implementation project(":custom:${companyDir.name}:${categoryDir.name}:${moduleDir.name}")
                             }
                         }
                     }

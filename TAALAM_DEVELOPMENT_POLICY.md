@@ -53,6 +53,98 @@ Configure these repository secrets:
 
 Only enable DockerHub publishing after the target image repository is private.
 
+## Build Customisation
+
+Every Gradle change this fork needs is expressed in files the fork owns, so that
+upstream build files stay byte-identical to `apache/fineract` and merges from
+upstream do not conflict on them.
+
+There are exactly three places fork build logic may live:
+
+| File | Scope | Owned by |
+| --- | --- | --- |
+| `custom/taalam/<category>/<module>/build.gradle` | one module | fork |
+| `custom/taalam/gradle/taalam-module.gradle` | all Taalam modules | fork |
+| `custom/taalam/gradle/taalam-root.gradle` | reconfigures upstream projects | fork |
+
+The only edit to an upstream Gradle file is a 13-line hook at the very bottom of
+the root `build.gradle`:
+
+```gradle
+def taalamRootOverrides = file("$rootDir/custom/taalam/gradle/taalam-root.gradle")
+if (taalamRootOverrides.exists()) {
+    apply from: taalamRootOverrides
+}
+```
+
+Keep that block last in the file and add nothing above it.
+
+### Choosing where a change goes
+
+1. Can the module configure it itself? Put it in
+   `custom/taalam/gradle/taalam-module.gradle`. This runs after the root
+   `allprojects { ... }` block, so it overrides upstream defaults. The
+   proprietary license header and the RAT exclusion work this way.
+2. Is it a dependency-scope problem? Fix it in the module's
+   `dependencies.gradle`. Fineract platform projects are declared `compileOnly`
+   plus `testImplementation`, never `implementation`: `fineract-provider` *is*
+   the application, so a custom module that ships it transitively puts a second
+   copy of `fineract-core` and the `fineract-provider` `-plain` jar on the
+   runtime classpath. That duplicates `application.properties`, which breaks
+   property binding (`fineract.mode` to `NullPointerException`) and Liquibase
+   changelog lookup. Keeping these off `runtimeElements` is what allows
+   `custom/docker/build.gradle` to stay untouched.
+3. Does it have to reconfigure an upstream project? Put it in
+   `custom/taalam/gradle/taalam-root.gradle`. It currently handles the root RAT
+   excludes, the `bootRun` classpath for custom modules, and keeping the
+   upstream `acme` demo modules out of the custom Docker image.
+
+Note that `taalam-root.gradle` is applied during root project evaluation, before
+any subproject is evaluated. Anything touching a task or configuration that a
+subproject's own `build.gradle` creates must be deferred with `afterEvaluate` or
+a lazy `configureEach`.
+
+### Merge hygiene guard
+
+```bash
+./gradlew taalamUpstreamFootprint -PtaalamUpstreamRef=upstream/develop
+```
+
+This fails when the fork has modified an upstream file that is not on the
+accepted list in `custom/taalam/gradle/taalam-root.gradle`. Adding an entry is
+allowed, but do it in the same commit as the change so the growth is visible in
+review. Anything on that list is a file that can conflict on the next merge, or
+worse, merge cleanly and break the compile.
+
+## Upstream Synchronisation
+
+Add the upstream remote once:
+
+```bash
+git remote add upstream https://github.com/apache/fineract.git
+```
+
+Sync every one to two weeks. Drift is the dominant cost: a fortnight is roughly
+50 commits and a few minutes of work, while a quarter is 700 or more commits and
+a project. Merging through the GitHub "Sync fork" button is what produces the
+`Merge branch 'apache:develop' into develop` commits in this history; it gives
+no way to preview a merge, cherry-pick, or batch the work, so use the remote.
+
+```bash
+git fetch upstream develop
+git merge-tree --write-tree --name-only HEAD upstream/develop   # preview conflicts
+git merge upstream/develop
+```
+
+A clean merge is not a working merge. `custom/taalam` compiles against roughly
+60 upstream classes, and upstream can change any of them without producing a
+conflict, so always finish with:
+
+```bash
+./gradlew taalamUpstreamFootprint -PtaalamUpstreamRef=upstream/develop
+./gradlew :custom:taalam:tenant:runtime:test :custom:taalam:security:keycloak:test
+```
+
 ## Git And Jira
 
 Use conventional commit style and include the Jira work item key when work maps

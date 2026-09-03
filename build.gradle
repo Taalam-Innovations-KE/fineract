@@ -257,7 +257,7 @@ allprojects  {
     // Configuration for Gradle license plug-in
     // https://github.com/hierynomus/license-gradle-plugin
     license {
-        header rootProject.file(project.path.startsWith(':custom:taalam:') ? "$rootDir/TAALAM_PROPRIETARY_LICENSETEXT.md" : "$rootDir/APACHE_LICENSETEXT.md")
+        header rootProject.file("$rootDir/APACHE_LICENSETEXT.md")
         excludes([
             "**/gradlew*",
             "**/git.properties",
@@ -286,10 +286,8 @@ allprojects  {
     rat {
         verbose = false
         reportDir = file("$buildDir/reports/rat")
-        excludes = project.path.startsWith(':custom:taalam:') ? ['**/*'] : [
+        excludes = [
             '**/src/main/templates/**/*.mustache',
-            '**/custom/taalam/**',
-            'custom/taalam/**',
             '**/.dockerignore',
             '**/*.launch',
             '**/licenses/**',

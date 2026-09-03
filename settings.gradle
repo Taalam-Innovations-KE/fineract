@@ -99,3 +99,17 @@ file("${rootDir}/custom").eachDir { companyDir ->
         }
     }
 }
+
+// Taalam fork hook. All fork build logic lives in the file below so that every
+// upstream build file stays byte-identical to apache/fineract. It is applied
+// after the root project is evaluated, which is when upstream's
+// fineractCustomProjects list and the license/rat extensions exist.
+// See TAALAM_DEVELOPMENT_POLICY.md. Do not add fork logic anywhere else.
+gradle.rootProject {
+    afterEvaluate { rootProject ->
+        def taalamOverrides = rootProject.file('custom/taalam/gradle/taalam-root.gradle')
+        if (taalamOverrides.exists()) {
+            rootProject.apply from: taalamOverrides
+        }
+    }
+}

@@ -4,9 +4,20 @@
  */
 
 dependencies {
-    implementation(project(':fineract-core'))
-    implementation(project(':fineract-provider'))
-    implementation(project(':fineract-security'))
+    // NOTE: Fineract platform modules are compileOnly on purpose. They are always
+    // present on the application runtime classpath (fineract-provider is the app),
+    // so shipping them transitively from a custom module puts a second copy of
+    // fineract-core / the fineract-provider -plain jar on the classpath. That
+    // duplicates application.properties, which breaks property binding
+    // (fineract.mode -> NullPointerException) and Liquibase changelog lookup.
+    // Keeping them off runtimeElements is what lets custom/docker/build.gradle and
+    // the root build.gradle stay byte-identical to apache/fineract.
+    compileOnly(project(':fineract-core'))
+    compileOnly(project(':fineract-provider'))
+    compileOnly(project(':fineract-security'))
+    testImplementation(project(':fineract-core'))
+    testImplementation(project(':fineract-provider'))
+    testImplementation(project(':fineract-security'))
     implementation('com.fasterxml.jackson.core:jackson-databind')
     implementation('com.google.code.gson:gson')
     implementation('com.zaxxer:HikariCP')

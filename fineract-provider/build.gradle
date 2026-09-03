@@ -279,31 +279,7 @@ tasks.named('licenseMain') {
     source = sourceSets.main.java.srcDirs
 }
 
-// NOTE: put all discovered custom modules (custom/<company>/<category>/<module>) on the
-// bootRun classpath so their Spring Boot auto-configurations load. org.apache.fineract is
-// excluded because the core jars are already on the main runtime classpath; duplicating
-// them breaks Liquibase changelog lookup and duplicates application.properties.
-configurations {
-    customModuleRuntime {
-        canBeConsumed = false
-        canBeResolved = true
-        attributes {
-            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
-            attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
-        }
-    }
-}
-
-dependencies {
-    rootProject.fineractCustomProjects.each { customProject ->
-        customModuleRuntime(customProject) {
-            exclude group: 'org.apache.fineract'
-        }
-    }
-}
-
 bootRun {
-    classpath += configurations.customModuleRuntime
     jvmArgs = [
             "-Dspring.output.ansi.enabled=ALWAYS"
     ]

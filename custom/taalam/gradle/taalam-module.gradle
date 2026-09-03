@@ -1,0 +1,25 @@
+/*
+ * Copyright (c) 2026 Taalam Innovations KE. All rights reserved.
+ * Confidential and proprietary.
+ *
+ * Per-module conventions for every custom/taalam/<category>/<module> project.
+ *
+ * This file exists so that Taalam-specific build behaviour never has to be
+ * expressed as a conditional inside an upstream (apache/fineract) build file.
+ * Everything here overrides the defaults set by the root build.gradle
+ * `allprojects { ... }` block, which is evaluated before any subproject.
+ *
+ * Apply it as the FIRST line of each module's build.gradle:
+ *     apply from: "$rootDir/custom/taalam/gradle/taalam-module.gradle"
+ */
+
+// Proprietary header instead of the Apache header the root build applies.
+license {
+    header = rootProject.file("$rootDir/TAALAM_PROPRIETARY_LICENSETEXT.md")
+}
+
+// Apache Release Audit Tool only understands the ASF header, so it can never
+// pass on proprietary sources. Exclude the whole module rather than fight it.
+rat {
+    excludes = ['**/*']
+}

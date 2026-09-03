@@ -10,4 +10,7 @@ base {
     archivesName = 'taalam-fineract-tenant-runtime'
 }
 
+// Taalam conventions: proprietary license header, RAT exclusion.
+// Keeps these out of the upstream root build.gradle.
+apply from: "$rootDir/custom/taalam/gradle/taalam-module.gradle"
 apply from: 'dependencies.gradle'

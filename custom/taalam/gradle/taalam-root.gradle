@@ -1,0 +1,188 @@
+/*
+ * Copyright (c) 2026 Taalam Innovations KE. All rights reserved.
+ * Confidential and proprietary.
+ *
+ * Root-level build overrides for the Taalam fork of Apache Fineract.
+ *
+ * Applied from a single hook at the bottom of settings.gradle, which upstream
+ * changes roughly four times less often than the root build.gradle. This
+ * is the ONLY place fork build logic is allowed to reconfigure upstream
+ * projects, so that upstream build files stay byte-identical to apache/fineract
+ * and merges from upstream never conflict on them.
+ *
+ * Runs at the end of root project evaluation, which means:
+ *   - rootProject.fineractCustomProjects is already populated
+ *   - subprojects have NOT been evaluated yet, so anything that touches a task
+ *     or configuration created by a subproject's own build.gradle must be
+ *     deferred (afterEvaluate / lazy configureEach)
+ */
+
+// ---------------------------------------------------------------------------
+// 1. Root RAT run must skip the proprietary tree.
+//    The root `rat` task scans $rootDir, so per-module excludes are not enough.
+// ---------------------------------------------------------------------------
+rat {
+    excludes = excludes + [
+        '**/custom/taalam/**',
+        'custom/taalam/**'
+    ]
+}
+
+// ---------------------------------------------------------------------------
+// 2. `bootRun` must see the custom modules so their Spring Boot
+//    auto-configurations load. Upstream only wires custom modules into the
+//    :custom:docker image, so local runs would otherwise start without them.
+//
+//    org.apache.fineract is excluded because the core jars are already on the
+//    main runtime classpath. Pulling them in again (including the -plain jar)
+//    duplicates application.properties, which breaks property binding
+//    (fineract.mode -> NullPointerException) and Liquibase changelog lookup.
+// ---------------------------------------------------------------------------
+project(':fineract-provider') {
+    configurations {
+        taalamCustomModuleRuntime {
+            canBeConsumed = false
+            canBeResolved = true
+            attributes {
+                attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
+                attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
+            }
+        }
+    }
+
+    dependencies {
+        rootProject.fineractCustomProjects.each { customProject ->
+            taalamCustomModuleRuntime(customProject) {
+                exclude group: 'org.apache.fineract'
+            }
+        }
+    }
+
+    afterEvaluate {
+        tasks.named('bootRun') {
+            classpath += configurations.taalamCustomModuleRuntime
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 3. Keep the upstream `acme` demo modules out of the custom Docker image.
+//    acme ships a demo Liquibase changelog that inserts a job row without
+//    short_name, which violates the current NOT NULL constraint and aborts
+//    tenant migration. Removed by project path (not group) so upstream can add
+//    or regroup demo modules without this breaking, and so upstream's dependency
+//    loop in custom/docker/build.gradle can stay untouched.
+// ---------------------------------------------------------------------------
+project(':custom:docker') {
+    afterEvaluate { dockerProject ->
+        def dependencySet = dockerProject.configurations.implementation.dependencies
+        def demoModules = dependencySet.findAll { dependency ->
+            dependency instanceof ProjectDependency && taalamProjectPath(dependency).startsWith(':custom:acme:')
+        }
+        dependencySet.removeAll(demoModules)
+        logger.info("Taalam: excluded {} acme demo module(s) from the custom Docker image", demoModules.size())
+    }
+}
+
+// Gradle 8.11 moved ProjectDependency.dependencyProject to ProjectDependency.path.
+// Support both so a wrapper upgrade from upstream cannot break this file.
+static String taalamProjectPath(dependency) {
+    dependency.metaClass.respondsTo(dependency, 'getPath') ? dependency.path : dependency.dependencyProject.path
+}
+
+// ---------------------------------------------------------------------------
+// 4. Merge hygiene guard.
+//
+//    Every upstream-owned file this fork edits is a merge conflict waiting to
+//    happen, so the set of them is pinned below. Run:
+//
+//        ./gradlew taalamUpstreamFootprint -PtaalamUpstreamRef=upstream/develop
+//
+//    It fails when the fork has modified an upstream file that is not on the
+//    accepted list, which forces the change into custom/taalam/ (or into this
+//    file) instead. When an entry genuinely has to be added, add it here in the
+//    same commit so the growth is visible in review.
+// ---------------------------------------------------------------------------
+
+// Paths the fork owns outright. Upstream never writes here, so no conflicts.
+def taalamForkOwnedPaths = [
+    'custom/taalam/',
+    'TAALAM_',
+    '.github/',
+    'docker-compose-custom.yml'
+]
+
+// Upstream files the fork is knowingly allowed to modify. Keep this SHORT, and
+// prefer moving an entry into custom/taalam/ over leaving it here.
+def taalamAcceptedUpstreamEdits = [
+    // 14-line fork hook at EOF, nothing else.
+    'settings.gradle',
+    // Fork branding and local compose/dev wiring.
+    'README.md',
+    'config/docker/compose/fineract.yml',
+    'config/docker/postgresql/docker-entrypoint-initdb.d/01-init.sh',
+    'docker-compose-mariadb-test.yml',
+    'docker-compose-mysql-test.yml',
+    'docker-compose-postgresql-test.yml',
+    'fineract-doc/build.gradle',
+    'fineract-doc/src/docs/en/chapters/security/index.adoc',
+    'fineract-provider/src/main/resources/application.properties',
+    // Core patches for external OAuth2. Each one is a semantic merge risk:
+    // upstream can change these files without producing a git conflict.
+    'fineract-core/src/main/java/org/apache/fineract/infrastructure/security/domain/PlatformUser.java',
+    'fineract-core/src/main/java/org/apache/fineract/infrastructure/security/domain/BasicPasswordEncodablePlatformUser.java',
+    'fineract-provider/src/main/java/org/apache/fineract/infrastructure/core/config/SecurityValidationConfig.java',
+    'fineract-provider/src/test/java/org/apache/fineract/infrastructure/core/config/SecurityValidationConfigTest.java',
+    'fineract-security/src/main/java/org/apache/fineract/infrastructure/security/api/UserDetailsApiResource.java'
+]
+
+tasks.register('taalamUpstreamFootprint') {
+    group = 'taalam'
+    description = 'Fails if the fork has modified an upstream file that is not on the accepted list.'
+    def repositoryDir = rootDir
+    def forkOwnedPaths = taalamForkOwnedPaths
+    def acceptedUpstreamEdits = taalamAcceptedUpstreamEdits
+    def upstreamRef = (project.findProperty('taalamUpstreamRef') ?: 'upstream/develop').toString()
+    doLast {
+        def mergeBase = taalamGit(repositoryDir, ['merge-base', 'HEAD', upstreamRef])
+        // Compared against the WORKING TREE, not HEAD, so drift is caught before it is
+        // committed. A file the fork ADDED cannot conflict, whatever directory it sits
+        // in, so only modified and deleted paths count towards the footprint.
+        def changes = taalamGit(repositoryDir, ['diff', '--name-status', '--diff-filter=MD', mergeBase])
+                .readLines()*.trim().findAll { !it.isEmpty() }
+                .collect { it.split('\t', 2)[1] }
+        def added = taalamGit(repositoryDir, ['diff', '--name-only', '--diff-filter=A', mergeBase])
+                .readLines()*.trim().findAll { !it.isEmpty() }
+        def forkOwned = changes.findAll { path -> forkOwnedPaths.any { path.startsWith(it) } }
+        def upstreamTouched = changes - forkOwned
+        def drift = upstreamTouched.findAll { !acceptedUpstreamEdits.contains(it) }
+
+        logger.lifecycle("Upstream ref     : ${upstreamRef} (merge base ${mergeBase.take(10)})")
+        logger.lifecycle("Files added      : ${added.size()} (cannot conflict)")
+        logger.lifecycle("Fork-owned edits : ${forkOwned.size()} (conflict-free)")
+        logger.lifecycle("Upstream edits   : ${upstreamTouched.size() - drift.size()} accepted, ${drift.size()} unaccounted")
+        upstreamTouched.findAll { acceptedUpstreamEdits.contains(it) }.each {
+            logger.lifecycle("  accepted    ${it}")
+        }
+        drift.each { logger.lifecycle("  UNACCOUNTED ${it}") }
+
+        if (!drift.isEmpty()) {
+            throw new GradleException(
+                    "${drift.size()} upstream file(s) modified without being accepted. Move the change into " +
+                    "custom/taalam/ or custom/taalam/gradle/taalam-root.gradle, or add the path to " +
+                    "taalamAcceptedUpstreamEdits in custom/taalam/gradle/taalam-root.gradle.")
+        }
+    }
+}
+
+static String taalamGit(File repositoryDir, List<String> arguments) {
+    def process = new ProcessBuilder(['git'] + arguments)
+            .directory(repositoryDir)
+            .redirectErrorStream(true)
+            .start()
+    def output = process.inputStream.text
+    if (process.waitFor() != 0) {
+        throw new GradleException("git ${arguments.join(' ')} failed:\n${output}")
+    }
+    return output.trim()
+}

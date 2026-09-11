@@ -22,6 +22,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.reflect.TypeToken;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -45,15 +46,16 @@ import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.infrastructure.core.service.MathUtil;
+import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.client.domain.ClientRepository;
 import org.apache.fineract.portfolio.client.exception.ClientNotActiveException;
 import org.apache.fineract.portfolio.client.exception.ClientNotFoundException;
 import org.apache.fineract.portfolio.loanaccount.domain.ExpectedDisbursementDateValidator;
-import org.apache.fineract.portfolio.loanaccount.domain.LoanStatus;
 import org.apache.fineract.portfolio.loanaccount.exception.InvalidLoanStateTransitionException;
 import org.apache.fineract.portfolio.loanaccount.exception.LoanApplicationDateException;
 import org.apache.fineract.portfolio.workingcapitalloan.WorkingCapitalLoanConstants;
+import org.apache.fineract.portfolio.workingcapitalloan.calc.ProjectedAmortizationScheduleModel;
 import org.apache.fineract.portfolio.workingcapitalloan.domain.WorkingCapitalLoan;
 import org.apache.fineract.portfolio.workingcapitalloan.domain.WorkingCapitalLoanPeriodFrequencyType;
 import org.apache.fineract.portfolio.workingcapitalloan.exception.WorkingCapitalLoanApplicationDateException;
@@ -63,6 +65,7 @@ import org.apache.fineract.portfolio.workingcapitalloanbreach.domain.WorkingCapi
 import org.apache.fineract.portfolio.workingcapitalloannearbreach.domain.WorkingCapitalNearBreach;
 import org.apache.fineract.portfolio.workingcapitalloannearbreach.validator.WorkingCapitalNearBreachParseAndValidator;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.WorkingCapitalLoanProductConstants;
+import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanBreachStartType;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanDelinquencyStartType;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanProduct;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanProductConfigurableAttributes;
@@ -86,15 +89,17 @@ public class WorkingCapitalLoanApplicationDataValidator {
             WorkingCapitalLoanConstants.clientIdParameterName, WorkingCapitalLoanConstants.productIdParameterName,
             WorkingCapitalLoanConstants.fundIdParameterName, WorkingCapitalLoanConstants.accountNoParameterName,
             WorkingCapitalLoanConstants.externalIdParameterName, WorkingCapitalLoanConstants.principalAmountParamName,
-            WorkingCapitalLoanProductConstants.periodPaymentRateParamName, WorkingCapitalLoanConstants.totalPaymentVolumeParamName,
-            WorkingCapitalLoanProductConstants.discountParamName, WorkingCapitalLoanConstants.submittedOnDateParameterName,
-            WorkingCapitalLoanConstants.expectedDisbursementDateParameterName,
+            WorkingCapitalLoanConstants.originatorsParameterName, WorkingCapitalLoanProductConstants.periodPaymentRateParamName,
+            WorkingCapitalLoanConstants.totalPaymentVolumeParamName, WorkingCapitalLoanProductConstants.discountParamName,
+            WorkingCapitalLoanConstants.submittedOnDateParameterName, WorkingCapitalLoanConstants.expectedDisbursementDateParameterName,
             WorkingCapitalLoanProductConstants.delinquencyBucketIdParamName, WorkingCapitalLoanProductConstants.repaymentEveryParamName,
             WorkingCapitalLoanProductConstants.repaymentFrequencyTypeParamName, WorkingCapitalLoanConstants.submittedOnNoteParameterName,
             WorkingCapitalLoanProductConstants.breachIdParamName, WorkingCapitalLoanProductConstants.allowAttributeOverridesParamName,
             WorkingCapitalLoanProductConstants.paymentAllocationParamName, WorkingCapitalLoanProductConstants.delinquencyGraceDaysParamName,
             WorkingCapitalLoanProductConstants.delinquencyStartTypeParamName, WorkingCapitalLoanProductConstants.nearBreachIdParamName,
-            WorkingCapitalLoanProductConstants.breachGraceDaysParamName));
+            WorkingCapitalLoanProductConstants.breachGraceDaysParamName, WorkingCapitalLoanProductConstants.breachStartTypeParamName));
+
+    private static final String EIR_NOT_CALCULABLE_CODE = "unable.to.calculate.valid.eir";
 
     private final FromJsonHelper fromApiJsonHelper;
     private final WorkingCapitalPaymentAllocationDataValidator paymentAllocationDataValidator;
@@ -176,9 +181,10 @@ public class WorkingCapitalLoanApplicationDataValidator {
                 .zeroOrPositiveAmount();
 
         // Optional: discount
+        BigDecimal discount = null;
         if (this.fromApiJsonHelper.parameterExists(WorkingCapitalLoanProductConstants.discountParamName, element)) {
-            final BigDecimal discount = this.fromApiJsonHelper.extractBigDecimalNamed(WorkingCapitalLoanProductConstants.discountParamName,
-                    element, new HashSet<>());
+            discount = this.fromApiJsonHelper.extractBigDecimalNamed(WorkingCapitalLoanProductConstants.discountParamName, element,
+                    new HashSet<>());
             baseDataValidator.reset().parameter(WorkingCapitalLoanProductConstants.discountParamName).value(discount).ignoreIfNull()
                     .zeroOrPositiveAmount();
         }
@@ -240,6 +246,21 @@ public class WorkingCapitalLoanApplicationDataValidator {
             }
         }
 
+        if (this.fromApiJsonHelper.parameterExists(WorkingCapitalLoanProductConstants.breachStartTypeParamName, element)) {
+            final String breachStartTypeValue = this.fromApiJsonHelper
+                    .extractStringNamed(WorkingCapitalLoanProductConstants.breachStartTypeParamName, element);
+            baseDataValidator.reset().parameter(WorkingCapitalLoanProductConstants.breachStartTypeParamName).value(breachStartTypeValue)
+                    .ignoreIfNull().notBlank();
+            if (breachStartTypeValue != null && !breachStartTypeValue.isBlank()) {
+                final WorkingCapitalLoanBreachStartType breachStartType = WorkingCapitalLoanBreachStartType
+                        .fromString(breachStartTypeValue);
+                if (breachStartType == null) {
+                    baseDataValidator.reset().parameter(WorkingCapitalLoanProductConstants.breachStartTypeParamName)
+                            .failWithCode("invalid.breach.start.type");
+                }
+            }
+        }
+
         // Submitted-on date rules (product range, client activation, not future, not after expected disbursement)
         validateSubmittedOnDate(element, product, client, expectedDisbursementDate, null);
 
@@ -278,6 +299,9 @@ public class WorkingCapitalLoanApplicationDataValidator {
             validateOverridables(element, baseDataValidator, product.getConfigurableAttributes(), null, null);
         }
 
+        // Once the individual inputs are valid, ensure the derived Total Days / EIR is actually calculable.
+        validateEirCalculable(dataValidationErrors, product, principal, periodPaymentRate, totalPaymentVolume, discount);
+
         throwExceptionIfValidationWarningsExist(dataValidationErrors);
     }
 
@@ -285,13 +309,12 @@ public class WorkingCapitalLoanApplicationDataValidator {
      * Validates for modify using the existing loan. Ensures loan is in submitted state, then runs parameter validation.
      */
     public void validateForUpdate(final JsonCommand command, final WorkingCapitalLoan loan) {
-        if (loan.getLoanStatus() != LoanStatus.SUBMITTED_AND_PENDING_APPROVAL) {
+        if (loan.isNotSubmittedAndPendingApproval()) {
             throw new WorkingCapitalLoanApplicationNotInSubmittedStateCannotBeModifiedException(loan.getId());
         }
         final LocalDate expectedDisbursementDate = loan.getDisbursementDetails().isEmpty() ? null
                 : loan.getDisbursementDetails().getFirst().getExpectedDisbursementDate();
-        validateForUpdate(command, loan.getLoanProduct() != null ? loan.getLoanProduct().getId() : null,
-                loan.getClient() != null ? loan.getClient().getId() : null,
+        validateForUpdate(command, loan.productId(), loan.getClient() != null ? loan.getClient().getId() : null,
                 loan.getExternalId() != null ? loan.getExternalId().getValue() : null, loan.getAccountNumber(), loan.getSubmittedOnDate(),
                 expectedDisbursementDate);
     }
@@ -315,6 +338,70 @@ public class WorkingCapitalLoanApplicationDataValidator {
             throw new WorkingCapitalLoanApplicationDateException("submitted.on.date.cannot.be.after.expected.disbursement.date",
                     "submittedOnDate cannot be after expectedDisbursementDate.", submittedOnDate, expectedDisbursementDate);
         }
+        validateEirCalculableForLoan(loan);
+    }
+
+    /** Runs only when no prior errors exist so the produced message is a single, unambiguous validation error. */
+    private void validateEirCalculable(final List<ApiParameterError> dataValidationErrors, final WorkingCapitalLoanProduct product,
+            final BigDecimal principal, final BigDecimal periodPaymentRate, final BigDecimal totalPaymentVolume,
+            final BigDecimal discount) {
+        if (!dataValidationErrors.isEmpty() || product == null || product.getRelatedDetail() == null
+                || product.getRelatedDetail().getNpvDayCount() == null || principal == null || periodPaymentRate == null
+                || totalPaymentVolume == null) {
+            return;
+        }
+        final MathContext mc = MoneyHelper.getMathContext();
+        final BigDecimal effectiveDiscount = resolveEffectiveDiscount(discount, product);
+        if (!ProjectedAmortizationScheduleModel.isEirCalculable(effectiveDiscount, principal, totalPaymentVolume, periodPaymentRate,
+                product.getRelatedDetail().getNpvDayCount(), product.getCurrency(), mc)) {
+            dataValidationErrors.add(eirNotCalculableError());
+        }
+    }
+
+    /**
+     * The discount the created loan will actually carry — must mirror
+     * {@link org.apache.fineract.portfolio.workingcapitalloan.service.WorkingCapitalLoanAssemblerImpl}: requested
+     * discount, else the product's non-overridable positive default, else zero.
+     */
+    private BigDecimal resolveEffectiveDiscount(final BigDecimal requestedDiscount, final WorkingCapitalLoanProduct product) {
+        if (requestedDiscount != null) {
+            return requestedDiscount;
+        }
+        final BigDecimal productDiscount = product.getRelatedDetail().getDiscount();
+        if (productDiscount != null && productDiscount.compareTo(BigDecimal.ZERO) > 0 && product.getConfigurableAttributes() != null
+                && !product.getConfigurableAttributes().isDiscountDefaultOverridable()) {
+            return productDiscount;
+        }
+        return BigDecimal.ZERO;
+    }
+
+    /** Runs on the assembled loan, before persist, so a rejection leaves the stored loan unchanged. */
+    private void validateEirCalculableForLoan(final WorkingCapitalLoan loan) {
+        final var details = loan.getLoanProductRelatedDetails();
+        if (details == null || details.getNpvDayCount() == null) {
+            return;
+        }
+        final MathContext mc = MoneyHelper.getMathContext();
+        final BigDecimal discount = details.getDiscountProposed() != null ? details.getDiscountProposed() : BigDecimal.ZERO;
+        if (!ProjectedAmortizationScheduleModel.isEirCalculable(discount, loan.getProposedPrincipal(), loan.getTotalPaymentVolume(),
+                details.getPeriodPaymentRate(), details.getNpvDayCount(), loan.getLoanProduct().getCurrency(), mc)) {
+            final List<ApiParameterError> errors = new ArrayList<>();
+            errors.add(eirNotCalculableError());
+            throw new PlatformApiDataValidationException(errors);
+        }
+    }
+
+    /**
+     * The code is assembled via {@link DataValidatorBuilder#failWithCode} so it tracks the framework's canonical
+     * {@code validation.msg.<resource>.<parameter>.<code>} format instead of a hand-concatenated string.
+     */
+    private ApiParameterError eirNotCalculableError() {
+        final List<ApiParameterError> assembled = new ArrayList<>();
+        new DataValidatorBuilder(assembled).resource(WorkingCapitalLoanConstants.WCL_RESOURCE_NAME).reset()
+                .parameter(WorkingCapitalLoanConstants.principalAmountParamName).failWithCode(EIR_NOT_CALCULABLE_CODE);
+        final String code = assembled.getFirst().getUserMessageGlobalisationCode();
+        return ApiParameterError.parameterError(code, WorkingCapitalLoanConstants.EIR_NOT_CALCULABLE_USER_MESSAGE,
+                WorkingCapitalLoanConstants.principalAmountParamName);
     }
 
     private void validateForUpdate(final JsonCommand command, final Long existingProductId, final Long existingClientId,
@@ -492,6 +579,22 @@ public class WorkingCapitalLoanApplicationDataValidator {
                 if (delinquencyStartType == null) {
                     baseDataValidator.reset().parameter(WorkingCapitalLoanProductConstants.delinquencyStartTypeParamName)
                             .failWithCode("invalid.delinquency.start.type");
+                }
+            }
+        }
+
+        if (this.fromApiJsonHelper.parameterExists(WorkingCapitalLoanProductConstants.breachStartTypeParamName, element)) {
+            final String breachStartTypeValue = this.fromApiJsonHelper
+                    .extractStringNamed(WorkingCapitalLoanProductConstants.breachStartTypeParamName, element);
+            baseDataValidator.reset().parameter(WorkingCapitalLoanProductConstants.breachStartTypeParamName).value(breachStartTypeValue)
+                    .ignoreIfNull().notBlank();
+            if (breachStartTypeValue != null && !breachStartTypeValue.isBlank()) {
+                atLeastOneParameterPassedForUpdate = true;
+                final WorkingCapitalLoanBreachStartType breachStartType = WorkingCapitalLoanBreachStartType
+                        .fromString(breachStartTypeValue);
+                if (breachStartType == null) {
+                    baseDataValidator.reset().parameter(WorkingCapitalLoanProductConstants.breachStartTypeParamName)
+                            .failWithCode("invalid.breach.start.type");
                 }
             }
         }

@@ -290,6 +290,7 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
     private final LoanTransactionProcessingService loanTransactionProcessingService;
     private final LoanBalanceService loanBalanceService;
     private final LoanTransactionService loanTransactionService;
+    private final LoanOriginatorLinkingService loanOriginatorLinkingService;
 
     @Transactional
     @Override
@@ -417,7 +418,7 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
                 createAndSaveLoanScheduleArchive(loan, scheduleGeneratorDTO);
             }
             disburseLoan(command, isPaymentTypeApplicableForDisbursementCharge, paymentDetail, loan, currentUser, changes,
-                    scheduleGeneratorDTO);
+                    scheduleGeneratorDTO, isAccountTransfer);
             loan.adjustNetDisbursalAmount(amountToDisburse.getAmount());
 
             loanAccrualsProcessingService.reprocessExistingAccruals(loan, true);
@@ -433,6 +434,10 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
                 if (isAccountTransfer && loan.shouldCreateStandingInstructionAtDisbursement()) {
                     final PortfolioAccountData linkedSavingsAccountData = this.accountAssociationsReadPlatformService
                             .retriveLoanLinkedAssociation(loanId);
+                    if (linkedSavingsAccountData == null) {
+                        throw new LinkedAccountRequiredException("loan.disburse.downpayment",
+                                "Loan with id:" + loanId + " requires a linked savings account for the down payment transfer", loanId);
+                    }
                     final SavingsAccount fromSavingsAccount = null;
                     final boolean isRegularTransaction = true;
                     final boolean isExceptionForBalanceCheck = false;
@@ -462,6 +467,11 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
                     }
                 }
             }
+
+            if (command.hasNonNullParameter(LoanApiConstants.ORIGINATORS_PARAM)) {
+                final JsonArray originatorsArray = command.arrayOfParameterNamed(LoanApiConstants.ORIGINATORS_PARAM);
+                loanOriginatorLinkingService.processOriginatorsForLoanDisbursement(loanId, originatorsArray);
+            }
         }
         if (!changes.isEmpty()) {
             loan.updateLoanScheduleDependentDerivedFields();
@@ -483,6 +493,10 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
 
         for (final Map.Entry<Long, BigDecimal> entrySet : disBuLoanCharges.entrySet()) {
             final PortfolioAccountData savingAccountData = this.accountAssociationsReadPlatformService.retriveLoanLinkedAssociation(loanId);
+            if (savingAccountData == null) {
+                throw new LinkedAccountRequiredException("loan.disburse.charge",
+                        "Loan with id:" + loanId + " has a charge payable by account transfer but no linked savings account", loanId);
+            }
             final SavingsAccount fromSavingsAccount = null;
             final boolean isRegularTransaction = true;
             final boolean isExceptionForBalanceCheck = false;
@@ -555,7 +569,8 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
     }
 
     private void disburseLoan(JsonCommand command, boolean isPaymentTypeApplicableForDisbursementCharge, PaymentDetail paymentDetail,
-            Loan loan, AppUser currentUser, Map<String, Object> changes, ScheduleGeneratorDTO scheduleGeneratorDTO) {
+            Loan loan, AppUser currentUser, Map<String, Object> changes, ScheduleGeneratorDTO scheduleGeneratorDTO,
+            boolean isAccountTransfer) {
         final PaymentDetail paymentDetail1 = isPaymentTypeApplicableForDisbursementCharge ? paymentDetail : null;
         final LocalDate actualDisbursementDate1 = command.localDateValueOfParameterNamed(ACTUAL_DISBURSEMENT_DATE);
 
@@ -579,7 +594,7 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
         loan.updateLoanRepaymentPeriodsDerivedFields(actualDisbursementDate1);
         loanTransactionValidator.validateActivityNotBeforeClientOrGroupTransferDate(loan, LoanEvent.LOAN_DISBURSED,
                 actualDisbursementDate1);
-        loanDisbursementService.handleDisbursementTransaction(loan, actualDisbursementDate1, paymentDetail1);
+        loanDisbursementService.handleDisbursementTransaction(loan, actualDisbursementDate1, paymentDetail1, isAccountTransfer);
         loanBalanceService.updateLoanSummaryDerivedFields(loan);
         final Money interestApplied = Money.of(loan.getCurrency(), loan.getSummary().getTotalInterestCharged());
 
@@ -797,7 +812,7 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
                     createAndSaveLoanScheduleArchive(loan, scheduleGeneratorDTO);
                 }
                 disburseLoan(command, configurationDomainService.isPaymentTypeApplicableForDisbursementCharge(), paymentDetail, loan,
-                        currentUser, changes, scheduleGeneratorDTO);
+                        currentUser, changes, scheduleGeneratorDTO, isAccountTransfer);
                 if (disbursementTransaction != null) {
                     final long termsAfter = loan.getTermsCount();
                     final LoanTransactionFlagsData additionalDisbursalFlags = new LoanTransactionFlagsData(termsAfter != termsBefore);
@@ -830,6 +845,11 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
             for (final Map.Entry<Long, BigDecimal> entrySet : disBuLoanCharges.entrySet()) {
                 final PortfolioAccountData savingAccountData = this.accountAssociationsReadPlatformService
                         .retriveLoanLinkedAssociation(loan.getId());
+                if (savingAccountData == null) {
+                    throw new LinkedAccountRequiredException("loan.disburse.charge",
+                            "Loan with id:" + loan.getId() + " has a charge payable by account transfer but no linked savings account",
+                            loan.getId());
+                }
                 final SavingsAccount fromSavingsAccount = null;
                 final boolean isRegularTransaction = true;
                 final boolean isExceptionForBalanceCheck = false;

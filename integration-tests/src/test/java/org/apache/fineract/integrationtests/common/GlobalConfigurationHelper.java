@@ -150,7 +150,7 @@ public class GlobalConfigurationHelper {
      *      integration test state using Spring Framework's integration test infrastructure for transaction commits and
      *      rollbacks.
      */
-    private static ArrayList<HashMap> getAllDefaultGlobalConfigurations() {
+    public static ArrayList<HashMap> getAllDefaultGlobalConfigurations() {
 
         ArrayList<HashMap> defaults = new ArrayList<>();
 
@@ -693,6 +693,21 @@ public class GlobalConfigurationHelper {
         retainedEarningUsedByReportName.put("trapDoor", false);
         retainedEarningUsedByReportName.put("string_value", "Trial Balance Summary Report with Asset Owner");
         defaults.add(retainedEarningUsedByReportName);
+
+        HashMap<String, Object> isDisallowBackdatedTransactions = new HashMap<>();
+        isDisallowBackdatedTransactions.put("name", GlobalConfigurationConstants.DISALLOW_BACKDATED_TRANSACTIONS);
+        isDisallowBackdatedTransactions.put("value", 0L);
+        isDisallowBackdatedTransactions.put("enabled", false);
+        isDisallowBackdatedTransactions.put("trapDoor", false);
+        defaults.add(isDisallowBackdatedTransactions);
+
+        HashMap<String, Object> wclChargeAccrualTime = new HashMap<>();
+        wclChargeAccrualTime.put("name", GlobalConfigurationConstants.WCL_CHARGE_ACCRUAL_TIME);
+        wclChargeAccrualTime.put("value", 0L);
+        wclChargeAccrualTime.put("enabled", true);
+        wclChargeAccrualTime.put("trapDoor", false);
+        wclChargeAccrualTime.put("string_value", "EOD");
+        defaults.add(wclChargeAccrualTime);
 
         return defaults;
     }

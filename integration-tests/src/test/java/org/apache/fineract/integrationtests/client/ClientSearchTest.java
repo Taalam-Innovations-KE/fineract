@@ -24,6 +24,7 @@ import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import io.restassured.specification.ResponseSpecification;
 import java.time.LocalDate;
+import java.util.Locale;
 import org.apache.fineract.client.models.GetClientsClientIdResponse;
 import org.apache.fineract.client.models.GetClientsResponse;
 import org.apache.fineract.client.models.PageClientSearchData;
@@ -34,11 +35,13 @@ import org.apache.fineract.client.models.PostClientsResponse;
 import org.apache.fineract.client.models.PostOfficesRequest;
 import org.apache.fineract.client.models.PostOfficesResponse;
 import org.apache.fineract.client.models.SortOrder;
+import org.apache.fineract.client.util.Calls;
 import org.apache.fineract.integrationtests.common.ClientHelper;
 import org.apache.fineract.integrationtests.common.Utils;
 import org.apache.fineract.integrationtests.common.system.CodeHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import retrofit2.Response;
 
 public class ClientSearchTest extends IntegrationTest {
 
@@ -173,6 +176,24 @@ public class ClientSearchTest extends IntegrationTest {
     }
 
     @Test
+    public void testClientSearchWorks_ByExternalId_CaseInsensitive() {
+        // given
+        PostClientsRequest request1 = ClientHelper.defaultClientCreationRequest();
+        clientHelper.createClient(request1);
+
+        PostClientsRequest request2 = ClientHelper.defaultClientCreationRequest();
+        clientHelper.createClient(request2);
+
+        PostClientsRequest request3 = ClientHelper.defaultClientCreationRequest();
+        clientHelper.createClient(request3);
+        // when
+        PageClientSearchData result = clientHelper.searchClients(request2.getExternalId().toUpperCase(Locale.ROOT));
+        // then
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent().get(0).getExternalId().getValue()).isEqualTo(request2.getExternalId());
+    }
+
+    @Test
     public void testClientSearchWorks_ByAccountNumber() {
         // given
         PostClientsRequest request1 = ClientHelper.defaultClientCreationRequest();
@@ -216,13 +237,37 @@ public class ClientSearchTest extends IntegrationTest {
     }
 
     @Test
+    public void testClientSearchWorks_ByDisplayName_CaseInsensitive() {
+        // given
+        PostClientsRequest request1 = ClientHelper.defaultClientCreationRequest();
+        clientHelper.createClient(request1);
+
+        PostClientsRequest request2 = ClientHelper.defaultClientCreationRequest();
+        String uniqueFirstName = Utils.randomStringGenerator("FN_", 10);
+        String uniqueLastName = Utils.randomStringGenerator("LN_", 10);
+        request2.setFirstname(uniqueFirstName);
+        request2.setLastname(uniqueLastName);
+        clientHelper.createClient(request2);
+        String client2DisplayName = "%s %s".formatted(uniqueFirstName, uniqueLastName);
+
+        PostClientsRequest request3 = ClientHelper.defaultClientCreationRequest();
+        clientHelper.createClient(request3);
+        // when
+        PageClientSearchData result = clientHelper.searchClients(client2DisplayName.toLowerCase());
+        // then
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent().get(0).getDisplayName()).isEqualTo(client2DisplayName);
+    }
+
+    @Test
     public void testClientSearchWorks_ByMobileNo() {
         // given
         PostClientsRequest request1 = ClientHelper.defaultClientCreationRequest();
         clientHelper.createClient(request1);
 
         PostClientsRequest request2 = ClientHelper.defaultClientCreationRequest();
-        request2.setMobileNo(Utils.randomNumberGenerator(8).toString());
+        // request2.setMobileNo(Utils.randomNumberGenerator(8).toString());
+        request2.setMobileNo(Utils.randomStringGenerator("", 8, Utils.SOURCE_SET_NUMBERS));
         clientHelper.createClient(request2);
 
         PostClientsRequest request3 = ClientHelper.defaultClientCreationRequest();
@@ -256,7 +301,8 @@ public class ClientSearchTest extends IntegrationTest {
     public void testClientSearchWorks_ByClientIdentifier() {
         // given
         PostClientsRequest request1 = ClientHelper.defaultClientCreationRequest();
-        request1.setMobileNo(Utils.randomNumberGenerator(8).toString());
+        // request1.setMobileNo(Utils.randomNumberGenerator(8).toString());
+        request1.setMobileNo(Utils.randomStringGenerator("", 8, Utils.SOURCE_SET_NUMBERS));
         PostClientsResponse clientResponse = clientHelper.createClient(request1);
         final Long documentType = 1L;
         PostClientsClientIdIdentifiersRequest identifierRequest = ClientHelper.createClientIdentifer(documentType);
@@ -271,6 +317,29 @@ public class ClientSearchTest extends IntegrationTest {
         clientHelper.createClient(request3);
         // when
         PageClientSearchData result = clientHelper.searchClients(documentKey);
+        // then
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent().get(0).getMobileNo()).isEqualTo(request1.getMobileNo());
+    }
+
+    @Test
+    public void testClientSearchWorks_ByClientIdentifier_CaseInsensitive() {
+        // given
+        PostClientsRequest request1 = ClientHelper.defaultClientCreationRequest();
+        request1.setMobileNo(Utils.randomStringGenerator("", 8, Utils.SOURCE_SET_NUMBERS));
+        PostClientsResponse clientResponse = clientHelper.createClient(request1);
+        final Long documentType = 1L;
+        PostClientsClientIdIdentifiersRequest identifierRequest = ClientHelper.createClientIdentifer(documentType);
+        final String documentKey = identifierRequest.getDocumentKey();
+        clientHelper.createClientIdentifer(clientResponse.getClientId(), identifierRequest);
+
+        PostClientsRequest request2 = ClientHelper.defaultClientCreationRequest();
+        clientHelper.createClient(request2);
+
+        PostClientsRequest request3 = ClientHelper.defaultClientCreationRequest();
+        clientHelper.createClient(request3);
+        // when
+        PageClientSearchData result = clientHelper.searchClients(documentKey.toLowerCase());
         // then
         assertThat(result.getTotalElements()).isEqualTo(1);
         assertThat(result.getContent().get(0).getMobileNo()).isEqualTo(request1.getMobileNo());
@@ -337,6 +406,120 @@ public class ClientSearchTest extends IntegrationTest {
         assertThat(entityClients.getTotalFilteredRecords()).isEqualTo(2);
         assertThat(entityClients.getPageItems().get(0).getId()).isEqualTo(entityClientResponse.getClientId());
         assertThat(entityClients.getPageItems().get(1).getId()).isEqualTo(secondEntityClientResponse.getClientId());
+    }
+
+    // ------------------------------------------------------------------
+    // orderBy / sortOrder input validation (CVE fix coverage)
+    //
+    // These exercise GET /api/v1/clients (ClientsApiResource#retrieveAll)
+    // directly via the generated retrieveAllClients(...) call, since that
+    // is the endpoint targeted by the security report
+    //
+    // retrieveAllClients param order (from ClientApi.java):
+    // officeId, externalId, displayName, firstName, lastName, status,
+    // underHierarchy, offset, limit, orderBy, sortOrder, orphansOnly,
+    // legalForm, staffId
+    // ------------------------------------------------------------------
+
+    private Response<GetClientsResponse> callRetrieveAllClients(String orderBy, String sortOrder) {
+        return Calls.executeU(fineractClient().clients.retrieveAllClients(null, null, null, null, null, null, null, null, null, orderBy,
+                sortOrder, null, null, null));
+    }
+
+    @Test
+    public void testClientSearchOrderByRejectsSqlInjectionPoc() {
+        // given
+        String maliciousOrderBy = "c.office_id, (CASE WHEN (ASCII(SUBSTRING((SELECT table_name FROM "
+                + "information_schema.tables WHERE table_schema REGEXP database() LIMIT 0,1),1,1)) - 109) "
+                + "THEN c.id ELSE (c.id*-1) END)";
+        // when
+        Response<GetClientsResponse> response = callRetrieveAllClients(maliciousOrderBy, null);
+        // then
+        assertThat(response.isSuccessful()).isFalse();
+    }
+
+    @Test
+    public void testClientSearchOrderByRejectsSubstringBypassAttempt() {
+        // given - "officeId" appears as a substring; confirms regex anchors hold
+        // when
+        Response<GetClientsResponse> response = callRetrieveAllClients("officeId, (CASE WHEN (1=1) THEN 1 END)", null);
+        // then
+        assertThat(response.isSuccessful()).isFalse();
+    }
+
+    @Test
+    public void testClientSearchOrderByRejectsCaseMismatch() {
+        // given - documented value is "displayName", not "DisplayName" or "DISPLAYNAME"
+        // when
+        Response<GetClientsResponse> response1 = callRetrieveAllClients("DisplayName", null);
+        Response<GetClientsResponse> response2 = callRetrieveAllClients("DISPLAYNAME", null);
+        // then
+        assertThat(response1.isSuccessful()).isFalse();
+        assertThat(response2.isSuccessful()).isFalse();
+    }
+
+    @Test
+    public void testClientSearchOrderByRejectsSnakeCaseColumnName() {
+        // given - undocumented internal SQL column form should no longer be accepted
+        // directly
+        // when
+        Response<GetClientsResponse> response1 = callRetrieveAllClients("c.display_name", null);
+        // then
+        assertThat(response1.isSuccessful()).isFalse(); // for generic validation this should be isTrue()
+    }
+
+    @Test
+    public void testClientSearchOrderByRejectsCommaSeparatedList() {
+        // given - multi-column orderBy is out of scope for this allowlist
+        // when
+        Response<GetClientsResponse> response = callRetrieveAllClients("displayName,accountNo", null);
+        // then
+        assertThat(response.isSuccessful()).isFalse();
+    }
+
+    @Test
+    public void testClientSearchOrderByRejectsEmptyAndWhitespace() {
+        // when
+        Response<GetClientsResponse> response = callRetrieveAllClients("   ", null);
+        // then
+        assertThat(response.isSuccessful()).isTrue();
+    }
+
+    @Test
+    public void testClientSearchOrderByRejectsSqlKeyword() {
+        // given - sanity check against trivial payloads, not just the sophisticated PoC
+        // when
+        Response<GetClientsResponse> response = callRetrieveAllClients("id; DROP TABLE m_client", null);
+        // then
+        assertThat(response.isSuccessful()).isFalse();
+    }
+
+    @Test
+    public void testClientSearchSortOrderRejectsArbitraryValue() {
+        // given - direction value outside ASC/DESC should be rejected
+        // when
+        Response<GetClientsResponse> response = callRetrieveAllClients("displayName", "RANDOM");
+        // then
+        assertThat(response.isSuccessful()).isFalse();
+    }
+
+    @Test
+    public void testClientSearchSortOrderRejectsInjectionAttempt() {
+        // when
+        Response<GetClientsResponse> response = callRetrieveAllClients("displayName", "ASC; DROP TABLE m_client--");
+        // then
+        assertThat(response.isSuccessful()).isFalse();
+    }
+
+    @Test
+    public void testClientSearchOrderByAcceptsAllDocumentedValues() {
+        // given - the 4 documented allowlist values from the API docs
+        for (String validOrderBy : new String[] { "displayName", "accountNo", "officeId", "officeName" }) {
+            // when
+            Response<GetClientsResponse> response = callRetrieveAllClients(validOrderBy, "ASC");
+            // then
+            assertThat(response.isSuccessful()).isTrue();
+        }
     }
 
 }

@@ -18,16 +18,20 @@
  */
 package org.apache.fineract.portfolio.workingcapitalloan.service;
 
+import com.google.gson.JsonArray;
 import jakarta.persistence.PersistenceException;
 import java.util.List;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
+import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
-import org.apache.fineract.portfolio.loanaccount.domain.LoanStatus;
+import org.apache.fineract.infrastructure.event.business.domain.workingcapitalloan.loan.WorkingCapitalLoanApplicationModifiedBusinessEvent;
+import org.apache.fineract.infrastructure.event.business.domain.workingcapitalloan.loan.WorkingCapitalLoanCreatedBusinessEvent;
+import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
+import org.apache.fineract.portfolio.loanaccount.service.LoanOriginatorLinkingService;
 import org.apache.fineract.portfolio.workingcapitalloan.WorkingCapitalLoanConstants;
 import org.apache.fineract.portfolio.workingcapitalloan.domain.WorkingCapitalLoan;
 import org.apache.fineract.portfolio.workingcapitalloan.domain.WorkingCapitalLoanNote;
@@ -37,13 +41,13 @@ import org.apache.fineract.portfolio.workingcapitalloan.repository.ProjectedAmor
 import org.apache.fineract.portfolio.workingcapitalloan.repository.WorkingCapitalLoanNoteRepository;
 import org.apache.fineract.portfolio.workingcapitalloan.repository.WorkingCapitalLoanRepository;
 import org.apache.fineract.portfolio.workingcapitalloan.serialization.WorkingCapitalLoanApplicationDataValidator;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
 public class WorkingCapitalLoanApplicationWritePlatformServiceImpl implements WorkingCapitalLoanApplicationWritePlatformService {
 
     private final WorkingCapitalLoanApplicationDataValidator validator;
@@ -51,6 +55,22 @@ public class WorkingCapitalLoanApplicationWritePlatformServiceImpl implements Wo
     private final WorkingCapitalLoanAssembler assembler;
     private final WorkingCapitalLoanNoteRepository noteRepository;
     private final ProjectedAmortizationLoanModelRepository projectedAmortizationLoanModelRepository;
+    private final Optional<LoanOriginatorLinkingService> loanOriginatorLinkingService;
+    private final BusinessEventNotifierService businessEventNotifierService;
+
+    public WorkingCapitalLoanApplicationWritePlatformServiceImpl(WorkingCapitalLoanApplicationDataValidator validator,
+            WorkingCapitalLoanRepository repository, WorkingCapitalLoanAssembler assembler, WorkingCapitalLoanNoteRepository noteRepository,
+            ProjectedAmortizationLoanModelRepository projectedAmortizationLoanModelRepository,
+            @Qualifier("workingCapitalLoanOriginatorLinkingServiceImpl") Optional<LoanOriginatorLinkingService> loanOriginatorLinkingService,
+            BusinessEventNotifierService businessEventNotifierService) {
+        this.validator = validator;
+        this.repository = repository;
+        this.assembler = assembler;
+        this.noteRepository = noteRepository;
+        this.projectedAmortizationLoanModelRepository = projectedAmortizationLoanModelRepository;
+        this.loanOriginatorLinkingService = loanOriginatorLinkingService;
+        this.businessEventNotifierService = businessEventNotifierService;
+    }
 
     @Transactional
     @Override
@@ -63,6 +83,9 @@ public class WorkingCapitalLoanApplicationWritePlatformServiceImpl implements Wo
             this.repository.saveAndFlush(saved);
             final String submittedOnNote = command.stringValueOfParameterNamed(WorkingCapitalLoanConstants.submittedOnNoteParameterName);
             createNote(submittedOnNote, saved);
+            attachOriginatorsIfProvided(command, saved);
+
+            this.businessEventNotifierService.notifyPostBusinessEvent(new WorkingCapitalLoanCreatedBusinessEvent(saved));
 
             return new CommandProcessingResultBuilder() //
                     .withCommandId(command.commandId()) //
@@ -97,6 +120,8 @@ public class WorkingCapitalLoanApplicationWritePlatformServiceImpl implements Wo
             final String submittedOnNote = command.stringValueOfParameterNamed(WorkingCapitalLoanConstants.submittedOnNoteParameterName);
             createNote(submittedOnNote, saved);
 
+            this.businessEventNotifierService.notifyPostBusinessEvent(new WorkingCapitalLoanApplicationModifiedBusinessEvent(saved));
+
             return new CommandProcessingResultBuilder() //
                     .withEntityId(loanId) //
                     .withEntityExternalId(saved.getExternalId()) //
@@ -119,7 +144,7 @@ public class WorkingCapitalLoanApplicationWritePlatformServiceImpl implements Wo
     @Override
     public CommandProcessingResult deleteApplication(final Long loanId) {
         final WorkingCapitalLoan loan = retrieveLoanBy(loanId);
-        if (loan.getLoanStatus() != LoanStatus.SUBMITTED_AND_PENDING_APPROVAL) {
+        if (loan.isNotSubmittedAndPendingApproval()) {
             throw new WorkingCapitalLoanApplicationNotInSubmittedStateCannotBeDeletedException(loanId);
         }
         final List<WorkingCapitalLoanNote> relatedNotes = this.noteRepository.findByWcLoanId(loan.getId());
@@ -144,6 +169,16 @@ public class WorkingCapitalLoanApplicationWritePlatformServiceImpl implements Wo
         if (StringUtils.isNotBlank(submittedOnNote)) {
             final WorkingCapitalLoanNote note = WorkingCapitalLoanNote.create(loan, submittedOnNote);
             this.noteRepository.save(note);
+        }
+    }
+
+    private void attachOriginatorsIfProvided(final JsonCommand command, final WorkingCapitalLoan loan) {
+        if (this.loanOriginatorLinkingService.isPresent()
+                && command.parameterExists(WorkingCapitalLoanConstants.originatorsParameterName)) {
+            final JsonArray originatorsArray = command.arrayOfParameterNamed(WorkingCapitalLoanConstants.originatorsParameterName);
+            if (originatorsArray != null && !originatorsArray.isEmpty()) {
+                this.loanOriginatorLinkingService.get().processOriginatorsForLoanApplication(loan.getId(), originatorsArray);
+            }
         }
     }
 }

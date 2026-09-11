@@ -32,8 +32,6 @@ import org.apache.fineract.client.feign.services.BusinessDateManagementApi;
 import org.apache.fineract.client.feign.services.BusinessStepConfigurationApi;
 import org.apache.fineract.client.feign.services.CacheApi;
 import org.apache.fineract.client.feign.services.CalendarApi;
-import org.apache.fineract.client.feign.services.CashierJournalsApi;
-import org.apache.fineract.client.feign.services.CashiersApi;
 import org.apache.fineract.client.feign.services.CentersApi;
 import org.apache.fineract.client.feign.services.ChargesApi;
 import org.apache.fineract.client.feign.services.ClientApi;
@@ -83,6 +81,7 @@ import org.apache.fineract.client.feign.services.InterOperationApi;
 import org.apache.fineract.client.feign.services.InterestRateChartApi;
 import org.apache.fineract.client.feign.services.InterestRateSlabAKAInterestBandsApi;
 import org.apache.fineract.client.feign.services.InternalCobApi;
+import org.apache.fineract.client.feign.services.InternalExternalEventsApi;
 import org.apache.fineract.client.feign.services.InternalWorkingCapitalLoansApi;
 import org.apache.fineract.client.feign.services.JournalEntriesApi;
 import org.apache.fineract.client.feign.services.LikelihoodApi;
@@ -105,9 +104,6 @@ import org.apache.fineract.client.feign.services.LoansPointInTimeApi;
 import org.apache.fineract.client.feign.services.MakerCheckerOr4EyeFunctionalityApi;
 import org.apache.fineract.client.feign.services.MappingFinancialActivitiesToAccountsApi;
 import org.apache.fineract.client.feign.services.MeetingsApi;
-import org.apache.fineract.client.feign.services.MixMappingApi;
-import org.apache.fineract.client.feign.services.MixReportApi;
-import org.apache.fineract.client.feign.services.MixTaxonomyApi;
 import org.apache.fineract.client.feign.services.NotesApi;
 import org.apache.fineract.client.feign.services.NotificationApi;
 import org.apache.fineract.client.feign.services.OfficesApi;
@@ -156,12 +152,15 @@ import org.apache.fineract.client.feign.services.TwoFactorApi;
 import org.apache.fineract.client.feign.services.UsersApi;
 import org.apache.fineract.client.feign.services.WorkingCapitalBreachApi;
 import org.apache.fineract.client.feign.services.WorkingCapitalLoanAccountLockApi;
+import org.apache.fineract.client.feign.services.WorkingCapitalLoanBreachActionsApi;
 import org.apache.fineract.client.feign.services.WorkingCapitalLoanBreachScheduleApi;
 import org.apache.fineract.client.feign.services.WorkingCapitalLoanChargesApi;
 import org.apache.fineract.client.feign.services.WorkingCapitalLoanCobCatchUpApi;
 import org.apache.fineract.client.feign.services.WorkingCapitalLoanDelinquencyActionsApi;
 import org.apache.fineract.client.feign.services.WorkingCapitalLoanDelinquencyRangeScheduleApi;
 import org.apache.fineract.client.feign.services.WorkingCapitalLoanInternalCobApiApi;
+import org.apache.fineract.client.feign.services.WorkingCapitalLoanNearBreachActionsApi;
+import org.apache.fineract.client.feign.services.WorkingCapitalLoanOriginatorsApi;
 import org.apache.fineract.client.feign.services.WorkingCapitalLoanProductsApi;
 import org.apache.fineract.client.feign.services.WorkingCapitalLoanTransactionsApi;
 import org.apache.fineract.client.feign.services.WorkingCapitalLoansApi;
@@ -269,14 +268,6 @@ public final class FineractFeignClient {
 
     public CalendarApi calendar() {
         return create(CalendarApi.class);
-    }
-
-    public CashierJournalsApi cashierJournals() {
-        return create(CashierJournalsApi.class);
-    }
-
-    public CashiersApi cashiers() {
-        return create(CashiersApi.class);
     }
 
     public CentersApi centers() {
@@ -475,6 +466,10 @@ public final class FineractFeignClient {
         return create(InternalCobApi.class);
     }
 
+    public InternalExternalEventsApi internalExternalEvents() {
+        return create(InternalExternalEventsApi.class);
+    }
+
     public JournalEntriesApi journalEntries() {
         return create(JournalEntriesApi.class);
     }
@@ -557,18 +552,6 @@ public final class FineractFeignClient {
 
     public MeetingsApi meetings() {
         return create(MeetingsApi.class);
-    }
-
-    public MixMappingApi mixMapping() {
-        return create(MixMappingApi.class);
-    }
-
-    public MixReportApi mixReport() {
-        return create(MixReportApi.class);
-    }
-
-    public MixTaxonomyApi mixTaxonomy() {
-        return create(MixTaxonomyApi.class);
     }
 
     public NotesApi notes() {
@@ -779,6 +762,10 @@ public final class FineractFeignClient {
         return create(WorkingCapitalLoanBreachScheduleApi.class);
     }
 
+    public WorkingCapitalLoanBreachActionsApi workingCapitalLoanBreachActions() {
+        return create(WorkingCapitalLoanBreachActionsApi.class);
+    }
+
     public InternalWorkingCapitalLoansApi internalWorkingCapitalLoans() {
         return create(InternalWorkingCapitalLoansApi.class);
     }
@@ -805,6 +792,14 @@ public final class FineractFeignClient {
 
     public WorkingCapitalNearBreachApi workingCapitalNearBreaches() {
         return create(WorkingCapitalNearBreachApi.class);
+    }
+
+    public WorkingCapitalLoanNearBreachActionsApi workingCapitalLoanNearBreachActions() {
+        return create(WorkingCapitalLoanNearBreachActionsApi.class);
+    }
+
+    public WorkingCapitalLoanOriginatorsApi workingCapitalLoanOriginators() {
+        return create(WorkingCapitalLoanOriginatorsApi.class);
     }
 
     public WorkingDaysApi workingDays() {

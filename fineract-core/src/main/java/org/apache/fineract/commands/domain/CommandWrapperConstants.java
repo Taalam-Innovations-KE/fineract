@@ -183,6 +183,7 @@ public final class CommandWrapperConstants {
     public static final String ENTITY_LOANPRODUCT = "LOANPRODUCT";
     public static final String ENTITY_WORKINGCAPITALLOANPRODUCT = "WORKINGCAPITALLOANPRODUCT";
     public static final String ENTITY_WORKINGCAPITALLOAN = "WORKINGCAPITALLOAN";
+    public static final String ENTITY_WORKINGCAPITALLOANTRANSACTION = "ENTITY_WORKINGCAPITALLOANTRANSACTION";
     public static final String ENTITY_CLIENTIDENTIFIER = "CLIENTIDENTIFIER";
     public static final String ENTITY_CLIENT = "CLIENT";
     public static final String ENTITY_DATATABLE = "DATATABLE";
@@ -251,6 +252,7 @@ public final class CommandWrapperConstants {
     public static final String ENTITY_DELINQUENCY_ACTION = "DELINQUENCY_ACTION";
     public static final String ENTITY_LOAN_AVAILABLE_DISBURSEMENT_AMOUNT = "LOAN_AVAILABLE_DISBURSEMENT_AMOUNT";
     public static final String ENTITY_LOAN_ORIGINATOR = "LOAN_ORIGINATOR";
+    public static final String ENTITY_WORKING_CAPITAL_LOAN_ORIGINATOR = "WORKING_CAPITAL_LOAN_ORIGINATOR";
     public static final String ENTITY_WORKINGDAYS = "WORKINGDAYS";
     public static final String ENTITY_SHAREPRODUCT = "SHAREPRODUCT";
     public static final String ENTITY_INTEREST_PAUSE = "INTEREST_PAUSE";

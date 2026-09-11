@@ -497,19 +497,13 @@ public final class ErrorMessageHelper {
                 expected);
     }
 
-    public static String wrongValueInLineInJournalEntries(int line, List<List<List<String>>> actual, List<String> expected) {
-        return wrongValueInLineInJournalEntries(null, line, actual, expected);
+    public static String wrongValueInInJournalEntries(List<List<String>> expected, List<List<String>> actual) {
+        return String.format("%nWrong values in Journal entries." //
+                + "%nActual values are: %n%s %nExpected values are: %n%s", actual, expected);
     }
 
     public static String wrongValueInLineInJournalEntries(String resourceId, int line, List<List<List<String>>> actualList,
             List<String> expected) {
-        String actual = actualList.stream().map(Object::toString).collect(Collectors.joining(System.lineSeparator()));
-        return String.format("%nWrong value in Journal entries of resource %s line %s." //
-                + "%nActual values for the possible transactions in line (with the same date) are: %n%s %nExpected values in line: %n%s",
-                resourceId, line, actual, expected);
-    }
-
-    public static String wrongValueInLineInJournalEntry(String resourceId, int line, List<List<String>> actualList, List<String> expected) {
         String actual = actualList.stream().map(Object::toString).collect(Collectors.joining(System.lineSeparator()));
         return String.format("%nWrong value in Journal entries of resource %s line %s." //
                 + "%nActual values for the possible transactions in line (with the same date) are: %n%s %nExpected values in line: %n%s",
@@ -1054,6 +1048,10 @@ public final class ErrorMessageHelper {
         return "The list of provided payment allocation rules must not contain any duplicates";
     }
 
+    public static String paymentAllocationRulesWithoutDefaultFailure() {
+        return "At least one DEFAULT payment allocation must be provided";
+    }
+
     public static String workingCapitalLoanProductIdentifiedDoesNotExistFailure(String identifierId) {
         return String.format("Working Capital Loan Product with identifier %s does not exist", identifierId);
     }
@@ -1147,7 +1145,7 @@ public final class ErrorMessageHelper {
     }
 
     public static String discountAdjustmentUndoNotActiveLoanFailure() {
-        return "Failed data validation due to: undo.discount.adjustment.only.allowed.for.active.loan.";
+        return "Failed data validation due to: undo.transaction.not.allowed.for.loan.status.";
     }
 
     public static String nearBreachCannotEnableWithoutBreachFailure() {
@@ -1168,5 +1166,21 @@ public final class ErrorMessageHelper {
 
     public static String periodPaymentRateOnNonActiveLoanFailure() {
         return "rate.change.not.allowed.for.non.active.loan";
+    }
+
+    public static String creditBalanceRefundBackdatedForbiddenFailure() {
+        return "Backdated credit balance refund is not allowed";
+    }
+
+    public static String workingCapitalInputValuesCauseUnableCalculateEIrFailure() {
+        return "Please check the input values - unable to calculate a valid EIR.";
+    }
+
+    public static String workingCapitalInputValuesCauseUnableCalculateEIrErrorCodeFailure() {
+        return "validation.msg.WORKINGCAPITALLOAN.principalAmount.unable.to.calculate.valid.eir";
+    }
+
+    public static String workingCapitalPeriodPaymentRateAfterMaturityDateFailure() {
+        return "[effectiveDate] Failed data validation due to: cannot.be.after.maturity.date.";
     }
 }

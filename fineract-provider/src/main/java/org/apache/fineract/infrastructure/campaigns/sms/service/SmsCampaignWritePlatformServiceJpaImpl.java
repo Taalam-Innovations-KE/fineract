@@ -26,7 +26,7 @@ import com.github.mustachejava.Mustache;
 import com.github.mustachejava.MustacheFactory;
 import com.google.gson.JsonElement;
 import java.io.IOException;
-import java.io.StringReader;
+import java.io.Reader;
 import java.io.StringWriter;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -56,6 +56,7 @@ import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
 import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
 import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRuleException;
+import org.apache.fineract.infrastructure.core.exception.PlatformDataIntegrityException;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.dataqueries.data.GenericResultsetData;
@@ -295,7 +296,7 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
                 }
             }
         } catch (final IOException | RuntimeException e) {
-            log.error("Error occured.", e);
+            log.error("Error occurred.", e);
         }
     }
 
@@ -337,7 +338,7 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
                 }
             }
         } catch (final IOException | RuntimeException e) {
-            log.error("Error occured.", e);
+            log.error("Error occurred.", e);
         }
     }
 
@@ -378,7 +379,7 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
                 }
             }
         } catch (final IOException | RuntimeException e) {
-            log.error("Error occured.", e);
+            log.error("Error occurred.", e);
         }
     }
 
@@ -455,7 +456,7 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
     @Override
     public String compileSmsTemplate(final String textMessageTemplate, final String campaignName, final Map<String, Object> smsParams) {
         final MustacheFactory mf = new DefaultMustacheFactory();
-        final Mustache mustache = mf.compile(new StringReader(textMessageTemplate), campaignName);
+        final Mustache mustache = mf.compile(Reader.of(textMessageTemplate), campaignName);
 
         final StringWriter stringWriter = new StringWriter();
         mustache.execute(stringWriter, smsParams);
@@ -526,7 +527,8 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
                 campaignMessage = new CampaignPreviewData(textMessageTemplate, 0);
             }
         } catch (final IOException e) {
-            // TODO throw something here
+            throw new PlatformDataIntegrityException("error.msg.sms.campaign.preview.parsing.error",
+                    "Error occurred while parsing campaign params for SMS campaign preview message", e.getMessage(), e);
         }
         return campaignMessage;
     }

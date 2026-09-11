@@ -223,6 +223,8 @@ final class SavingsAccountsApiResourceSwagger {
 
         @Schema(example = "1")
         public Long clientId;
+        @Schema(example = "1", description = "Mandatory for a group savings account, in place of clientId")
+        public Long groupId;
         @Schema(example = "1")
         public Long productId;
         @Schema(example = "en")
@@ -299,8 +301,18 @@ final class SavingsAccountsApiResourceSwagger {
 
         @Schema(example = "en")
         public String locale;
+        @Schema(example = "dd MMMM yyyy")
+        public String dateFormat;
         @Schema(example = "5.9999999999")
         public Double nominalAnnualInterestRate;
+        @Schema(example = "1")
+        public Long clientId;
+        @Schema(example = "1")
+        public Long productId;
+        @Schema(example = "01 March 2011")
+        public String submittedOnDate;
+        @Schema(example = "true")
+        public Boolean withdrawalFeeForTransfers;
     }
 
     @Schema(description = "PutSavingsAccountsAccountIdResponse")
@@ -316,6 +328,8 @@ final class SavingsAccountsApiResourceSwagger {
             public Double nominalAnnualInterestRate;
             @Schema(example = "en")
             public String locale;
+            @Schema(example = "01 March 2011")
+            public String submittedOnDate;
         }
 
         @Schema(example = "2")

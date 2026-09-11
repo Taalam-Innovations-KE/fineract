@@ -50,6 +50,7 @@ import org.apache.fineract.portfolio.workingcapitalloannearbreach.service.Workin
 import org.apache.fineract.portfolio.workingcapitalloanproduct.data.WorkingCapitalLoanProductData;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalAccountingRuleType;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalAmortizationType;
+import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanBreachStartType;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanDelinquencyStartType;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanProduct;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalPaymentAllocationType;
@@ -89,7 +90,7 @@ public class WorkingCapitalLoanProductReadPlatformServiceImpl implements Working
                 .orElseThrow(() -> new WorkingCapitalLoanProductNotFoundException(productId));
         final WorkingCapitalLoanProductData productData = this.mapper.toData(product);
 
-        if (product.getAccountingRule().isCashBased()) {
+        if (product.getAccountingRule().isAccrualWithDeferredRevenueAmortization()) {
             final Map<String, GLAccountData> accountingMappings = this.wcAccountingMappingService.fetchAccountMappingDetails(productId,
                     product.getAccountingRule());
             productData.setAccountingMappings(accountingMappings);
@@ -122,6 +123,8 @@ public class WorkingCapitalLoanProductReadPlatformServiceImpl implements Working
                 .getValuesAsStringEnumOptionDataList(WorkingCapitalPaymentAllocationType.class);
         final List<StringEnumOptionData> delinquencyStartTypeOptions = ApiFacingEnum
                 .getValuesAsStringEnumOptionDataList(WorkingCapitalLoanDelinquencyStartType.class);
+        final List<StringEnumOptionData> breachStartTypeOptions = ApiFacingEnum
+                .getValuesAsStringEnumOptionDataList(WorkingCapitalLoanBreachStartType.class);
         final List<StringEnumOptionData> delinquencyMinimumPaymentTypeOptions = ApiFacingEnum
                 .getValuesAsStringEnumOptionDataList(DelinquencyMinimumPaymentType.class);
         final List<EnumOptionData> advancedPaymentAllocationTransactionTypes = PaymentAllocationTransactionType
@@ -148,6 +151,7 @@ public class WorkingCapitalLoanProductReadPlatformServiceImpl implements Working
                 .advancedPaymentAllocationTypes(advancedPaymentAllocationTypes) //
                 .advancedPaymentAllocationTransactionTypes(advancedPaymentAllocationTransactionTypes) //
                 .delinquencyStartTypeOptions(delinquencyStartTypeOptions) //
+                .breachStartTypeOptions(breachStartTypeOptions) //
                 .delinquencyMinimumPaymentTypeOptions(delinquencyMinimumPaymentTypeOptions) //
                 .delinquencyBucketOptions(
                         delinquencyBucketOptions != null && !delinquencyBucketOptions.isEmpty() ? delinquencyBucketOptions : null) //

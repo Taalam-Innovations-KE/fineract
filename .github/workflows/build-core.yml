@@ -2,6 +2,12 @@ name: Fineract Build Core
 
 on:
   workflow_call:
+    inputs:
+      upload_artifacts:
+        description: Upload reports and logs even when the job succeeds
+        required: false
+        default: false
+        type: boolean
     secrets:
       DEVELOCITY_ACCESS_KEY:
         required: false
@@ -20,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -44,7 +50,7 @@ jobs:
           compression-level: 9
 
       - name: Archive test results
-        if: failure()
+        if: ${{ failure() || inputs.upload_artifacts }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-results-build-core
@@ -54,7 +60,7 @@ jobs:
           compression-level: 9
 
       - name: Archive server logs
-        if: failure()
+        if: ${{ failure() || inputs.upload_artifacts }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: server-logs-build-core

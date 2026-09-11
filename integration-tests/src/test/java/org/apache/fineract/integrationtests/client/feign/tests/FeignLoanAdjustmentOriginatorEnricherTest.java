@@ -61,11 +61,11 @@ public class FeignLoanAdjustmentOriginatorEnricherTest extends FeignLoanTestBase
             final String originatorExternalId = FeignLoanOriginatorHelper.generateUniqueExternalId();
             final Long originatorId = originatorHelper.createOriginator(originatorExternalId, "Test Originator", "ACTIVE");
             final Long clientId = createClient();
-            final Long productId = loanHelper.createSimpleLoanProduct();
+            final Long productId = loanHelper.createSimpleLoanProduct().getResourceId();
             final String today = Utils.dateFormatter.format(Utils.getLocalDateOfTenant());
 
             // Create loan, attach originator, approve, disburse
-            final Long loanId = loanHelper.createSubmittedLoan(clientId, productId, today, 10000.0, 12);
+            final Long loanId = loanHelper.createSubmittedLoan(clientId, productId, today, 10000.0, 12).getLoanId();
             originatorHelper.attachOriginatorToLoan(loanId, originatorId);
             approveLoan(loanId, LoanRequestBuilders.approveLoan(10000.0, today));
             disburseLoan(loanId, LoanRequestBuilders.disburseLoan(10000.0, today));
@@ -90,7 +90,7 @@ public class FeignLoanAdjustmentOriginatorEnricherTest extends FeignLoanTestBase
         externalEventHelper.enableBusinessEvent(ADJUST_EVENT);
         try {
             final Long clientId = createClient();
-            final Long productId = loanHelper.createSimpleLoanProduct();
+            final Long productId = loanHelper.createSimpleLoanProduct().getResourceId();
             final String today = Utils.dateFormatter.format(Utils.getLocalDateOfTenant());
 
             final Long loanId = createApproveAndDisburseLoan(clientId, productId, today, 10000.0, 12);
@@ -120,14 +120,14 @@ public class FeignLoanAdjustmentOriginatorEnricherTest extends FeignLoanTestBase
             final String today = Utils.dateFormatter.format(Utils.getLocalDateOfTenant());
 
             // Create loan with accrual accounting, attach originator, approve, disburse
-            final Long loanId = loanHelper.createSubmittedLoan(clientId, productId, today, 10000.0, 4);
+            final Long loanId = loanHelper.createSubmittedLoan(clientId, productId, today, 10000.0, 4).getLoanId();
             originatorHelper.attachOriginatorToLoan(loanId, originatorId);
             approveLoan(loanId, LoanRequestBuilders.approveLoan(10000.0, today));
             disburseLoan(loanId, LoanRequestBuilders.disburseLoan(10000.0, today));
 
             // Add a fee charge to the loan
             final Long chargeId = createFlatFeeCharge(100.0, "EUR");
-            ok(() -> fineractClient.loanCharges().executeLoanCharge(loanId, new PostLoansLoanIdChargesRequest().chargeId(chargeId)
+            ok(() -> fineractClient.loanCharges().createOrPayLoanCharge(loanId, new PostLoansLoanIdChargesRequest().chargeId(chargeId)
                     .amount(100.0).locale("en").dateFormat("dd MMMM yyyy").dueDate(today), (String) null));
 
             externalEventHelper.deleteAllExternalEvents();
@@ -155,15 +155,16 @@ public class FeignLoanAdjustmentOriginatorEnricherTest extends FeignLoanTestBase
             final String today = Utils.dateFormatter.format(Utils.getLocalDateOfTenant());
 
             // Create loan with accrual accounting, attach originator, approve, disburse
-            final Long loanId = loanHelper.createSubmittedLoan(clientId, productId, today, 10000.0, 4);
+            final Long loanId = loanHelper.createSubmittedLoan(clientId, productId, today, 10000.0, 4).getLoanId();
             originatorHelper.attachOriginatorToLoan(loanId, originatorId);
             approveLoan(loanId, LoanRequestBuilders.approveLoan(10000.0, today));
             disburseLoan(loanId, LoanRequestBuilders.disburseLoan(10000.0, today));
 
             // Add a fee charge and waive it
             final Long chargeId = createFlatFeeCharge(100.0, "EUR");
-            final Long loanChargeId = ok(() -> fineractClient.loanCharges().executeLoanCharge(loanId, new PostLoansLoanIdChargesRequest()
-                    .chargeId(chargeId).amount(100.0).locale("en").dateFormat("dd MMMM yyyy").dueDate(today), (String) null))
+            final Long loanChargeId = ok(
+                    () -> fineractClient.loanCharges().createOrPayLoanCharge(loanId, new PostLoansLoanIdChargesRequest().chargeId(chargeId)
+                            .amount(100.0).locale("en").dateFormat("dd MMMM yyyy").dueDate(today), (String) null))
                     .getResourceId();
 
             ok(() -> fineractClient.loanCharges().executeLoanChargeOnExistingCharge(loanId, loanChargeId,
@@ -190,6 +191,6 @@ public class FeignLoanAdjustmentOriginatorEnricherTest extends FeignLoanTestBase
     }
 
     private Long createFlatFeeCharge(double amount, String currencyCode) {
-        return chargesHelper.createLoanSpecifiedDueDateCharge(amount, currencyCode);
+        return chargesHelper.createLoanSpecifiedDueDateCharge(amount, currencyCode).getResourceId();
     }
 }

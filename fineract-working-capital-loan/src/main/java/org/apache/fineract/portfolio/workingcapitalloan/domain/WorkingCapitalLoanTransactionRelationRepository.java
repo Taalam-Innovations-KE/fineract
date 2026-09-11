@@ -22,8 +22,11 @@ package org.apache.fineract.portfolio.workingcapitalloan.domain;
 import java.util.List;
 import java.util.Optional;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
+import org.apache.fineract.portfolio.workingcapitalloan.data.ChargeIdAndAmountHolder;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -35,4 +38,26 @@ public interface WorkingCapitalLoanTransactionRelationRepository
 
     List<WorkingCapitalLoanTransactionRelation> findAllByToTransactionAndFromTransactionReversedAndFromTransactionTransactionType(
             WorkingCapitalLoanTransaction relatedDisbursementTransaction, boolean reversed, LoanTransactionType transactionType);
+
+    /**
+     * Unfiltered by reversed state, unlike the sibling lookup above: used where a previously-reversed link must still
+     * be found again (e.g. reviving a final discount-fee amortization the discount pool no longer zeroes out).
+     */
+    List<WorkingCapitalLoanTransactionRelation> findAllByToTransactionAndFromTransactionTransactionType(
+            WorkingCapitalLoanTransaction toTransaction, LoanTransactionType transactionType);
+
+    List<WorkingCapitalLoanTransactionRelation> findAllByToChargeAndFromTransactionReversedAndFromTransactionTransactionType(
+            WorkingCapitalLoanCharge toCharge, boolean reversed, LoanTransactionType transactionType);
+
+    @Query("""
+            SELECT r.toCharge.id, SUM(r.fromTransaction.transactionAmount)
+            FROM WorkingCapitalLoanTransactionRelation r
+            WHERE r.fromTransaction.wcLoan.id = :wcLoanId
+            AND r.fromTransaction.reversed = FALSE
+            AND r.fromTransaction.transactionType = :transactionType
+            AND r.toCharge IS NOT NULL
+            GROUP BY r.toCharge.id
+            """)
+    List<ChargeIdAndAmountHolder> fetchTransactionAmountPerCharge(@Param("wcLoanId") Long wcLoanId,
+            @Param("transactionType") LoanTransactionType transactionType);
 }

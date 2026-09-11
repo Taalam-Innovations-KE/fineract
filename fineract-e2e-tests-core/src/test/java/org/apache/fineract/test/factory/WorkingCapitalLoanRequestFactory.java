@@ -21,6 +21,7 @@ package org.apache.fineract.test.factory;
 import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
 import lombok.RequiredArgsConstructor;
+import org.apache.fineract.client.models.PostWorkingCapitalLoansBreachActionRequest;
 import org.apache.fineract.client.models.PostWorkingCapitalLoansDelinquencyActionRequest;
 import org.apache.fineract.client.models.PostWorkingCapitalLoansLoanIdRequest;
 import org.apache.fineract.client.models.PostWorkingCapitalLoansRequest;
@@ -29,6 +30,7 @@ import org.apache.fineract.client.models.PutWorkingCapitalLoansLoanIdRateRequest
 import org.apache.fineract.client.models.PutWorkingCapitalLoansLoanIdRequest;
 import org.apache.fineract.test.data.workingcapitalproduct.DefaultWorkingCapitalLoanProduct;
 import org.apache.fineract.test.data.workingcapitalproduct.WorkingCapitalLoanProductResolver;
+import org.apache.fineract.test.helper.BusinessDateHelper;
 import org.apache.fineract.test.helper.Utils;
 import org.springframework.stereotype.Component;
 
@@ -37,6 +39,7 @@ import org.springframework.stereotype.Component;
 public class WorkingCapitalLoanRequestFactory {
 
     private final WorkingCapitalLoanProductResolver workingCapitalLoanProductResolver;
+    private final BusinessDateHelper businessDateHelper;
 
     public static final String DATE_FORMAT = "dd MMMM yyyy";
     public static final String DEFAULT_LOCALE = "en";
@@ -117,6 +120,15 @@ public class WorkingCapitalLoanRequestFactory {
                 .locale(DEFAULT_LOCALE);//
     }
 
+    public PostWorkingCapitalLoansBreachActionRequest defaultWorkingCapitalLoansBreachActionRequest(final String action) {
+        return new PostWorkingCapitalLoansBreachActionRequest()//
+                .action(action)//
+                .startDate(DATE_SUBMIT_STRING)//
+                .endDate(DATE_SUBMIT_STRING)//
+                .dateFormat(DATE_FORMAT)//
+                .locale(DEFAULT_LOCALE);//
+    }
+
     public PutWorkingCapitalLoansLoanIdDiscountRequest defaultWorkingCapitalLoanUpdateDiscountRequest() {
         return new PutWorkingCapitalLoansLoanIdDiscountRequest()//
                 .discountAmount(DEFAULT_DISCOUNT).note("")//
@@ -125,8 +137,12 @@ public class WorkingCapitalLoanRequestFactory {
     }
 
     public PutWorkingCapitalLoansLoanIdRateRequest defaultWorkingCapitalLoanUpdateRateRequest() {
+        // effectiveDate is mandatory; defaulted to the business date so a scenario that does not care about the date
+        // reads as "change the rate now", and one that does simply overrides it.
         return new PutWorkingCapitalLoansLoanIdRateRequest() //
                 .periodPaymentRate(DEFAULT_PAYMENT_RATE) //
-                .locale(DEFAULT_LOCALE); //
+                .effectiveDate(FORMATTER.format(businessDateHelper.getBusinessLocalDate())) //
+                .locale(DEFAULT_LOCALE) //
+                .dateFormat(DATE_FORMAT); //
     }
 }

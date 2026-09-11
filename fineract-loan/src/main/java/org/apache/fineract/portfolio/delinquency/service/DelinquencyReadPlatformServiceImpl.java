@@ -104,7 +104,7 @@ public class DelinquencyReadPlatformServiceImpl implements DelinquencyReadPlatfo
 
     @Override
     public List<DelinquencyBucketData> retrieveAllDelinquencyBuckets() {
-        final List<DelinquencyBucket> delinquencyRangeList = repositoryBucket.findAll();
+        final List<DelinquencyBucket> delinquencyRangeList = repositoryBucket.findAllBuckets();
         final List<DelinquencyBucketData> result = mapperBucket.map(delinquencyRangeList);
         result.forEach(this::enrichWorkingCapitalConfiguration);
         return result;
@@ -132,8 +132,8 @@ public class DelinquencyReadPlatformServiceImpl implements DelinquencyReadPlatfo
     @Override
     public DelinquencyRangeData retrieveCurrentDelinquencyTag(Long loanId) {
         final Loan loan = this.loanRepository.getReferenceById(loanId);
-        Optional<LoanDelinquencyTagHistory> optLoanDelinquencyTag = this.repositoryLoanDelinquencyTagHistory.findByLoanAndLiftedOnDate(loan,
-                null);
+        Optional<LoanDelinquencyTagHistory> optLoanDelinquencyTag = this.repositoryLoanDelinquencyTagHistory
+                .findByLoanAndLiftedOnDateIsNull(loan);
         return optLoanDelinquencyTag.map(loanDelinquencyTagHistory -> mapperRange.map(loanDelinquencyTagHistory.getDelinquencyRange()))
                 .orElse(null);
     }
@@ -156,7 +156,7 @@ public class DelinquencyReadPlatformServiceImpl implements DelinquencyReadPlatfo
 
             // If the Loan is not Active yet or is cancelled (rejected or withdrawn), return template data
             if (loan.isSubmittedAndPendingApproval() || loan.isApproved() || loan.isCancelled()) {
-                if (loan.getLoanProduct() == null || loan.getLoanProduct().isAllowApprovedDisbursedAmountsOverApplied()) {
+                if (loan.getLoanProduct() != null && loan.getLoanProduct().isAllowApprovedDisbursedAmountsOverApplied()) {
                     collectionData.setAvailableDisbursementAmountWithOverApplied(calculateAvailableDisbursementAmountWithOverApplied(loan));
                 }
                 return collectionData;
@@ -212,7 +212,7 @@ public class DelinquencyReadPlatformServiceImpl implements DelinquencyReadPlatfo
         BigDecimal approvedWithOverApplied = loan.getApprovedPrincipal();
 
         // If over applied amount is enabled, calculate the maximum allowed amount
-        if (loanProduct.isAllowApprovedDisbursedAmountsOverApplied()) {
+        if (loanProduct != null && loanProduct.isAllowApprovedDisbursedAmountsOverApplied()) {
             if (loanProduct.getOverAppliedCalculationType() != null) {
                 if ("percentage".equalsIgnoreCase(loanProduct.getOverAppliedCalculationType())) {
                     final BigDecimal overAppliedNumber = BigDecimal.valueOf(loanProduct.getOverAppliedNumber());

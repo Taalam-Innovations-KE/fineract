@@ -18,7 +18,10 @@
  */
 package org.apache.fineract.portfolio.workingcapitalloan.api;
 
+import static org.apache.fineract.portfolio.workingcapitalloan.WorkingCapitalLoanConstants.CREDIT_BALANCE_REFUND_COMMAND;
 import static org.apache.fineract.portfolio.workingcapitalloan.WorkingCapitalLoanConstants.GOODWILL_CREDIT_LOAN_COMMAND;
+import static org.apache.fineract.portfolio.workingcapitalloan.WorkingCapitalLoanConstants.PAYOUT_REFUND_COMMAND;
+import static org.apache.fineract.portfolio.workingcapitalloan.WorkingCapitalLoanConstants.REPAYMENT_LOAN_COMMAND;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -44,6 +47,7 @@ import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
 import org.apache.fineract.infrastructure.core.api.jersey.Pagination;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
+import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.infrastructure.core.exception.UnrecognizedQueryParamException;
 import org.apache.fineract.infrastructure.core.service.CommandParameterUtil;
 import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
@@ -51,7 +55,10 @@ import org.apache.fineract.infrastructure.security.service.PlatformSecurityConte
 import org.apache.fineract.portfolio.workingcapitalloan.WorkingCapitalLoanConstants;
 import org.apache.fineract.portfolio.workingcapitalloan.data.WorkingCapitalLoanCommandTemplateData;
 import org.apache.fineract.portfolio.workingcapitalloan.data.WorkingCapitalLoanTransactionData;
+import org.apache.fineract.portfolio.workingcapitalloan.domain.WorkingCapitalLoanTransaction;
 import org.apache.fineract.portfolio.workingcapitalloan.exception.WorkingCapitalLoanNotFoundException;
+import org.apache.fineract.portfolio.workingcapitalloan.exception.WorkingCapitalLoanTransactionNotFoundException;
+import org.apache.fineract.portfolio.workingcapitalloan.repository.WorkingCapitalLoanTransactionRepository;
 import org.apache.fineract.portfolio.workingcapitalloan.service.WorkingCapitalLoanApplicationReadPlatformService;
 import org.apache.fineract.portfolio.workingcapitalloan.service.WorkingCapitalLoanTransactionReadPlatformService;
 import org.springframework.data.domain.Page;
@@ -70,6 +77,7 @@ public class WorkingCapitalLoanTransactionsApiResource {
     private final WorkingCapitalLoanApplicationReadPlatformService loanReadPlatformService;
     private final WorkingCapitalLoanTransactionReadPlatformService transactionReadPlatformService;
     private final PortfolioCommandSourceWritePlatformService commandsSourceWritePlatformService;
+    private final WorkingCapitalLoanTransactionRepository transactionRepository;
 
     @GET
     @Path("{loanId}/transactions")
@@ -165,11 +173,7 @@ public class WorkingCapitalLoanTransactionsApiResource {
 
     private WorkingCapitalLoanCommandTemplateData handleLoanTransactionTemplate(final Long loanId, final String loanExternalIdStr,
             final String templateType) {
-        final Long resolvedLoanId = loanId != null ? loanId
-                : loanReadPlatformService.getResolvedLoanId(ExternalIdFactory.produce(loanExternalIdStr));
-        if (resolvedLoanId == null) {
-            throw new WorkingCapitalLoanNotFoundException(ExternalIdFactory.produce(loanExternalIdStr));
-        }
+        final Long resolvedLoanId = resolveLoanId(loanId, loanExternalIdStr);
 
         final WorkingCapitalLoanCommandTemplateData loanTransactionTemplateData = transactionReadPlatformService
                 .retrieveLoanTransactionTemplate(resolvedLoanId, templateType);
@@ -184,7 +188,7 @@ public class WorkingCapitalLoanTransactionsApiResource {
     @Path("{loanId}/transactions")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(operationId = "executeWorkingCapitalLoanTransactionById", summary = "Execute Working Capital Loan transaction", description = "Supported command query parameter: repayment, creditBalanceRefund, discountFee, discountFeeAdjustment")
+    @Operation(operationId = "executeWorkingCapitalLoanTransactionById", summary = "Execute Working Capital Loan transaction", description = "Supported command query parameter: repayment, creditBalanceRefund, payoutRefund, goodwillCredit, discountFee, discountFeeAdjustment, chargeOff, undoChargeOff, writeOff, undoWriteOff, recoveryPayment")
     @RequestBody(required = true, content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.PostWorkingCapitalLoanTransactionsRequest.class)))
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.PostWorkingCapitalLoanTransactionsResponse.class))) })
@@ -199,7 +203,7 @@ public class WorkingCapitalLoanTransactionsApiResource {
     @Path("external-id/{loanExternalId}/transactions")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(operationId = "executeWorkingCapitalLoanTransactionByExternalId", summary = "Execute Working Capital Loan transaction by external id", description = "Supported command query parameter: repayment, creditBalanceRefund, discountFee, discountFeeAdjustment")
+    @Operation(operationId = "executeWorkingCapitalLoanTransactionByExternalId", summary = "Execute Working Capital Loan transaction by external id", description = "Supported command query parameter: repayment, creditBalanceRefund, payoutRefund, goodwillCredit, discountFee, discountFeeAdjustment, chargeOff, undoChargeOff, writeOff, undoWriteOff, recoveryPayment")
     @RequestBody(required = true, content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.PostWorkingCapitalLoanTransactionsRequest.class)))
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.PostWorkingCapitalLoanTransactionsResponse.class))) })
@@ -212,75 +216,133 @@ public class WorkingCapitalLoanTransactionsApiResource {
 
     private CommandProcessingResult executeTransaction(final Long loanId, final String loanExternalIdStr, final String commandParam,
             final String apiRequestBodyAsJson) {
-        final Long resolvedLoanId = loanId != null ? loanId
-                : loanReadPlatformService.getResolvedLoanId(ExternalIdFactory.produce(loanExternalIdStr));
-        if (resolvedLoanId == null) {
-            throw new WorkingCapitalLoanNotFoundException(ExternalIdFactory.produce(loanExternalIdStr));
-        }
+        final Long resolvedLoanId = resolveLoanId(loanId, loanExternalIdStr);
+
         final CommandWrapperBuilder builder = new CommandWrapperBuilder().withJson(apiRequestBodyAsJson);
         final CommandWrapper commandRequest;
-        if (CommandParameterUtil.is(commandParam, "repayment")) {
+        if (CommandParameterUtil.is(commandParam, REPAYMENT_LOAN_COMMAND)) {
             commandRequest = builder.repaymentWorkingCapitalLoanTransaction(resolvedLoanId).build();
-        } else if (CommandParameterUtil.is(commandParam, "creditBalanceRefund")) {
+        } else if (CommandParameterUtil.is(commandParam, CREDIT_BALANCE_REFUND_COMMAND)) {
             commandRequest = builder.creditBalanceRefundWorkingCapitalLoanTransaction(resolvedLoanId).build();
+        } else if (CommandParameterUtil.is(commandParam, PAYOUT_REFUND_COMMAND)) {
+            commandRequest = builder.payoutRefundWorkingCapitalLoanTransaction(resolvedLoanId).build();
         } else if (CommandParameterUtil.is(commandParam, GOODWILL_CREDIT_LOAN_COMMAND)) {
             commandRequest = builder.goodwillCreditWorkingCapitalLoanTransaction(resolvedLoanId).build();
         } else if (CommandParameterUtil.is(commandParam, WorkingCapitalLoanConstants.DISCOUNT_FEE_LOAN_COMMAND)) {
             commandRequest = builder.discountFeeWorkingCapitalLoanTransaction(resolvedLoanId).build();
         } else if (CommandParameterUtil.is(commandParam, WorkingCapitalLoanConstants.DISCOUNT_FEE_ADJUSTMENT_LOAN_COMMAND)) {
             commandRequest = builder.discountFeeAdjustmentWorkingCapitalLoanTransaction(resolvedLoanId).build();
+        } else if (CommandParameterUtil.is(commandParam, WorkingCapitalLoanConstants.CHARGE_OFF_LOAN_COMMAND)) {
+            commandRequest = builder.chargeOffWorkingCapitalLoanTransaction(resolvedLoanId).build();
+        } else if (CommandParameterUtil.is(commandParam, WorkingCapitalLoanConstants.UNDO_CHARGE_OFF_LOAN_COMMAND)) {
+            commandRequest = builder.undoChargeOffWorkingCapitalLoanTransaction(resolvedLoanId).build();
+        } else if (CommandParameterUtil.is(commandParam, WorkingCapitalLoanConstants.WRITE_OFF_LOAN_COMMAND)) {
+            commandRequest = builder.writeOffWorkingCapitalLoanTransaction(resolvedLoanId).build();
+        } else if (CommandParameterUtil.is(commandParam, WorkingCapitalLoanConstants.UNDO_WRITE_OFF_LOAN_COMMAND)) {
+            commandRequest = builder.undoWriteOffWorkingCapitalLoanTransaction(resolvedLoanId).build();
+        } else if (CommandParameterUtil.is(commandParam, WorkingCapitalLoanConstants.RECOVERY_PAYMENT_LOAN_COMMAND)) {
+            commandRequest = builder.recoveryPaymentWorkingCapitalLoanTransaction(resolvedLoanId).build();
         } else {
             throw new UnrecognizedQueryParamException("command", commandParam);
         }
         return this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
     }
 
+    private Long resolveLoanId(Long loanId, String loanExternalId) {
+        final Long resolvedLoanId = loanId != null ? loanId
+                : loanReadPlatformService.getResolvedLoanId(ExternalIdFactory.produce(loanExternalId));
+        if (resolvedLoanId == null) {
+            throw new WorkingCapitalLoanNotFoundException(ExternalIdFactory.produce(loanExternalId));
+        }
+        return resolvedLoanId;
+    }
+
     @POST
-    @Path("{loanId}/transactions/{transactionId}")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(operationId = "executeWorkingCapitalLoanTransactionCommandById", summary = "Execute a command on an existing Working Capital Loan transaction", description = "Supported command query parameter: undo")
-    @RequestBody(required = true, content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.PostWorkingCapitalLoanTransactionsRequest.class)))
+    @Operation(operationId = "executeWorkingCapitalLoanTransactionCommandByLoanIdTransactionId", summary = "Execute Working Capital Loan transaction command by loan id and transaction id", description = "Supported command query parameter: undo")
+    @Path("{loanId}/transactions/{transactionId}")
+    @RequestBody(required = true, content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.ExecuteWorkingCapitalLoanTransactionCommandRequest.class)))
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.PostWorkingCapitalLoanTransactionsResponse.class))) })
-    public CommandProcessingResult executeLoanTransactionCommandById(
+            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.ExecuteWorkingCapitalLoanTransactionCommandResponse.class))) })
+    public CommandProcessingResult executeWorkingCapitalLoanTransactionCommandByLoanIdTransactionId(
             @PathParam("loanId") @Parameter(description = "loanId", required = true) final Long loanId,
             @PathParam("transactionId") @Parameter(description = "transactionId", required = true) final Long transactionId,
-            @QueryParam("command") @Parameter(description = "command", required = true) final String commandParam,
+            @QueryParam("command") @Parameter(description = "command", required = true) final String command,
             @Parameter(hidden = true) final String apiRequestBodyAsJson) {
-        return executeTransactionCommand(loanId, null, transactionId, commandParam, apiRequestBodyAsJson);
+        return executeWorkingCapitalLoanTransactionCommand(loanId, null, transactionId, null, command, apiRequestBodyAsJson);
     }
 
     @POST
-    @Path("external-id/{loanExternalId}/transactions/{transactionId}")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(operationId = "executeWorkingCapitalLoanTransactionCommandByExternalId", summary = "Execute a command on an existing Working Capital Loan transaction by loan external id", description = "Supported command query parameter: undo")
-    @RequestBody(required = true, content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.PostWorkingCapitalLoanTransactionsRequest.class)))
+    @Operation(operationId = "executeWorkingCapitalLoanTransactionCommandByLoanIdTransactionExternalId", summary = "Execute Working Capital Loan transaction command by loan id and transaction external id", description = "Supported command query parameter: undo")
+    @Path("{loanId}/transactions/external-id/{transactionExternalId}")
+    @RequestBody(required = true, content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.ExecuteWorkingCapitalLoanTransactionCommandRequest.class)))
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.PostWorkingCapitalLoanTransactionsResponse.class))) })
-    public CommandProcessingResult executeLoanTransactionCommandByExternalId(
-            @PathParam("loanExternalId") @Parameter(description = "loanExternalId", required = true) final String loanExternalId,
-            @PathParam("transactionId") @Parameter(description = "transactionId", required = true) final Long transactionId,
-            @QueryParam("command") @Parameter(description = "command", required = true) final String commandParam,
+            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.ExecuteWorkingCapitalLoanTransactionCommandResponse.class))) })
+    public CommandProcessingResult executeWorkingCapitalLoanTransactionCommandByLoanIdTransactionExternalId(
+            @PathParam("loanId") @Parameter(description = "loanId", required = true) final Long loanId,
+            @PathParam("transactionExternalId") @Parameter(description = "transactionExternalId", required = true) final String transactionExternalId,
+            @QueryParam("command") @Parameter(description = "command", required = true) final String command,
             @Parameter(hidden = true) final String apiRequestBodyAsJson) {
-        return executeTransactionCommand(null, loanExternalId, transactionId, commandParam, apiRequestBodyAsJson);
+        return executeWorkingCapitalLoanTransactionCommand(loanId, null, null, transactionExternalId, command, apiRequestBodyAsJson);
     }
 
-    private CommandProcessingResult executeTransactionCommand(final Long loanId, final String loanExternalIdStr, final Long transactionId,
-            final String commandParam, final String apiRequestBodyAsJson) {
-        final Long resolvedLoanId = loanId != null ? loanId
-                : loanReadPlatformService.getResolvedLoanId(ExternalIdFactory.produce(loanExternalIdStr));
-        if (resolvedLoanId == null) {
-            throw new WorkingCapitalLoanNotFoundException(ExternalIdFactory.produce(loanExternalIdStr));
-        }
+    @POST
+    @Consumes({ MediaType.APPLICATION_JSON })
+    @Produces({ MediaType.APPLICATION_JSON })
+    @Operation(operationId = "executeWorkingCapitalLoanTransactionCommandByLoanExternalIdTransactionId", summary = "Execute Working Capital Loan transaction command by loan external id and transaction id", description = "Supported command query parameter: undo")
+    @Path("external-id/{loanExternalId}/transactions/{transactionId}")
+    @RequestBody(required = true, content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.ExecuteWorkingCapitalLoanTransactionCommandRequest.class)))
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.ExecuteWorkingCapitalLoanTransactionCommandResponse.class))) })
+    public CommandProcessingResult executeWorkingCapitalLoanTransactionCommandByLoanExternalIdTransactionId(
+            @PathParam("loanExternalId") @Parameter(description = "loanExternalId", required = true) final String loanExternalId,
+            @PathParam("transactionId") @Parameter(description = "transactionId", required = true) final Long transactionId,
+            @QueryParam("command") @Parameter(description = "command", required = true) final String command,
+            @Parameter(hidden = true) final String apiRequestBodyAsJson) {
+        return executeWorkingCapitalLoanTransactionCommand(null, loanExternalId, transactionId, null, command, apiRequestBodyAsJson);
+    }
+
+    @POST
+    @Consumes({ MediaType.APPLICATION_JSON })
+    @Produces({ MediaType.APPLICATION_JSON })
+    @Operation(operationId = "executeWorkingCapitalLoanTransactionCommandByLoanExternalIdTransactionExternalId", summary = "Execute Working Capital Loan transaction command by loan external id and transaction external id", description = "Supported command query parameter: undo")
+    @Path("external-id/{loanExternalId}/transactions/external-id/{transactionExternalId}")
+    @RequestBody(required = true, content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.ExecuteWorkingCapitalLoanTransactionCommandRequest.class)))
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = WorkingCapitalLoanTransactionsApiResourceSwagger.ExecuteWorkingCapitalLoanTransactionCommandResponse.class))) })
+    public CommandProcessingResult executeWorkingCapitalLoanTransactionCommandByLoanExternalIdTransactionExternalId(
+            @PathParam("loanExternalId") @Parameter(description = "loanExternalId", required = true) final String loanExternalId,
+            @PathParam("transactionExternalId") @Parameter(description = "transactionExternalId", required = true) final String transactionExternalId,
+            @QueryParam("command") @Parameter(description = "command", required = true) final String command,
+            @Parameter(hidden = true) final String apiRequestBodyAsJson) {
+        return executeWorkingCapitalLoanTransactionCommand(null, loanExternalId, null, transactionExternalId, command,
+                apiRequestBodyAsJson);
+    }
+
+    private CommandProcessingResult executeWorkingCapitalLoanTransactionCommand(Long loanId, String loanExternalId, Long transactionId,
+            String transactionExternalId, String command, String apiRequestBodyAsJson) {
+        final Long resolvedLoanId = resolveLoanId(loanId, loanExternalId);
+        final Long resolvedTransactionId = resolveTransactionId(resolvedLoanId, transactionId, transactionExternalId);
+        final String commandParam = command == null ? null : command.trim().toLowerCase();
         final CommandWrapperBuilder builder = new CommandWrapperBuilder().withJson(apiRequestBodyAsJson);
         final CommandWrapper commandRequest;
-        if (CommandParameterUtil.is(commandParam, WorkingCapitalLoanConstants.UNDO_LOAN_COMMAND)) {
-            commandRequest = builder.undoWorkingCapitalLoanTransaction(resolvedLoanId, transactionId).build();
+        if (CommandParameterUtil.is(commandParam, WorkingCapitalLoanConstants.UNDO_COMMAND)) {
+            commandRequest = builder.undoWorkingCapitalLoanTransaction(resolvedLoanId, resolvedTransactionId).build();
         } else {
             throw new UnrecognizedQueryParamException("command", commandParam);
         }
         return this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
+    }
+
+    private Long resolveTransactionId(Long loanId, Long transactionId, String transactionExternalId) {
+        if (transactionId != null) {
+            return transactionId;
+        }
+        ExternalId externalId = ExternalIdFactory.produce(transactionExternalId);
+        return transactionRepository.findByWcLoan_IdAndExternalId(loanId, externalId).map(WorkingCapitalLoanTransaction::getId)
+                .orElseThrow(() -> new WorkingCapitalLoanTransactionNotFoundException(externalId));
     }
 }

@@ -43,9 +43,11 @@ import org.apache.fineract.investor.service.DelayedSettlementAttributeService;
 import org.apache.fineract.investor.service.ExternalAssetOwnerTransferOutstandingInterestCalculation;
 import org.apache.fineract.investor.service.LoanTransferabilityService;
 import org.apache.fineract.portfolio.loanaccount.domain.Loan;
+import org.apache.fineract.portfolio.loanaccount.service.LoanBuyDownFeeAmortizationProcessingService;
+import org.apache.fineract.portfolio.loanaccount.service.LoanCapitalizedIncomeAmortizationProcessingService;
 import org.apache.fineract.portfolio.loanaccount.service.LoanJournalEntryPoster;
+import org.apache.fineract.portfolio.loanproduct.domain.LoanProductRelatedDetail;
 import org.springframework.context.annotation.Conditional;
-import org.springframework.data.domain.Sort;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
@@ -67,6 +69,8 @@ public class LoanAccountOwnerTransferBusinessStep implements LoanCOBBusinessStep
     private final LoanTransferabilityService loanTransferabilityService;
     private final DelayedSettlementAttributeService delayedSettlementAttributeService;
     private final ExternalAssetOwnerTransferOutstandingInterestCalculation externalAssetOwnerTransferOutstandingInterestCalculation;
+    private final LoanCapitalizedIncomeAmortizationProcessingService loanCapitalizedIncomeAmortizationProcessingService;
+    private final LoanBuyDownFeeAmortizationProcessingService loanBuyDownFeeAmortizationProcessingService;
 
     @Override
     public Loan execute(Loan loan) {
@@ -74,12 +78,9 @@ public class LoanAccountOwnerTransferBusinessStep implements LoanCOBBusinessStep
         log.debug("start processing loan ownership transfer business step for loan with Id [{}]", loanId);
 
         LocalDate settlementDate = DateUtils.getBusinessLocalDate();
-        List<ExternalAssetOwnerTransfer> transferDataList = externalAssetOwnerTransferRepository.findAll(
-                (root, query, criteriaBuilder) -> criteriaBuilder.and(criteriaBuilder.equal(root.get("loanId"), loanId),
-                        criteriaBuilder.equal(root.get("settlementDate"), settlementDate),
-                        root.get("status").in(Stream.concat(PENDING_STATUSES.stream(), BUYBACK_STATUSES.stream()).toList()),
-                        criteriaBuilder.greaterThanOrEqualTo(root.get("effectiveDateTo"), FUTURE_DATE_9999_12_31)),
-                Sort.by(Sort.Direction.ASC, "id"));
+        List<ExternalAssetOwnerTransfer> transferDataList = externalAssetOwnerTransferRepository
+                .findAllByLoanIdAndSettlementDateAndStatusInAndEffectiveDateToGreaterThanEqual(loanId, settlementDate,
+                        Stream.concat(PENDING_STATUSES.stream(), BUYBACK_STATUSES.stream()).toList(), FUTURE_DATE_9999_12_31);
         int size = transferDataList.size();
 
         if (size == 2) {
@@ -171,6 +172,10 @@ public class LoanAccountOwnerTransferBusinessStep implements LoanCOBBusinessStep
 
     private ExternalAssetOwnerTransfer sellAsset(final Loan loan, final LocalDate settlementDate,
             final ExternalAssetOwnerTransfer externalAssetOwnerTransfer) {
+        // Link the remaining deferred income amortization to the current owner before the
+        // loan <-> owner mapping is removed for the transfer.
+        recognizeRemainingDeferredIncomeOnLoanSale(loan, settlementDate);
+
         ExternalAssetOwner previousOwner = determinePreviousOwnerAndCleanupIfNeeded(loan, settlementDate, externalAssetOwnerTransfer);
         ExternalTransferStatus activeStatus = determineActiveStatus(externalAssetOwnerTransfer);
 
@@ -179,6 +184,19 @@ public class LoanAccountOwnerTransferBusinessStep implements LoanCOBBusinessStep
 
         loanJournalEntryPoster.postJournalEntriesForExternalOwnerTransfer(loan, newTransfer, previousOwner);
         return newTransfer;
+    }
+
+    private void recognizeRemainingDeferredIncomeOnLoanSale(final Loan loan, final LocalDate settlementDate) {
+        final LoanProductRelatedDetail loanProductRelatedDetail = loan.getLoanProductRelatedDetail();
+        if (loanProductRelatedDetail == null) {
+            return;
+        }
+        if (loanProductRelatedDetail.isEnableIncomeCapitalization()) {
+            loanCapitalizedIncomeAmortizationProcessingService.processCapitalizedIncomeAmortizationOnLoanSale(loan, settlementDate, true);
+        }
+        if (loanProductRelatedDetail.isEnableBuyDownFee()) {
+            loanBuyDownFeeAmortizationProcessingService.processBuyDownFeeAmortizationOnLoanSale(loan, settlementDate, true);
+        }
     }
 
     private ExternalAssetOwner determinePreviousOwnerAndCleanupIfNeeded(final Loan loan, final LocalDate settlementDate,

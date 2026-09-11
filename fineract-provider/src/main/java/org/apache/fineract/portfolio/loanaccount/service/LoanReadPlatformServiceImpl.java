@@ -88,7 +88,7 @@ import org.apache.fineract.portfolio.common.service.CommonEnumerations;
 import org.apache.fineract.portfolio.delinquency.data.DelinquencyRangeData;
 import org.apache.fineract.portfolio.delinquency.service.DelinquencyReadPlatformService;
 import org.apache.fineract.portfolio.floatingrates.data.InterestRatePeriodData;
-import org.apache.fineract.portfolio.floatingrates.service.FloatingRatesReadPlatformService;
+import org.apache.fineract.portfolio.floatingrates.service.FloatingRatesReadService;
 import org.apache.fineract.portfolio.fund.data.FundData;
 import org.apache.fineract.portfolio.fund.service.FundReadPlatformService;
 import org.apache.fineract.portfolio.group.data.GroupGeneralData;
@@ -181,7 +181,7 @@ public class LoanReadPlatformServiceImpl implements LoanReadPlatformService, Loa
     private final StaffReadService staffReadPlatformService;
     private final PaginationHelper paginationHelper;
     private final PaymentTypeReadService paymentTypeReadPlatformService;
-    private final FloatingRatesReadPlatformService floatingRatesReadPlatformService;
+    private final FloatingRatesReadService floatingRatesReadPlatformService;
     private final LoanUtilService loanUtilService;
     private final ConfigurationDomainService configurationDomainService;
     private final AccountDetailsReadPlatformService accountDetailsReadPlatformService;
@@ -991,6 +991,7 @@ public class LoanReadPlatformServiceImpl implements LoanReadPlatformService, Loa
             final Long chargeOffReasonId = JdbcSupport.getLong(rs, "chargeOffReasonId");
             final String chargeOffReason = rs.getString("chargeOffReason");
             final boolean isChargedOff = rs.getBoolean("isChargedOff");
+            final LocalDate overpaidOnDate = JdbcSupport.getLocalDate(rs, "overpaidOnDate");
 
             final LoanApplicationTimelineData timeline = new LoanApplicationTimelineData(submittedOnDate, submittedByUsername,
                     submittedByFirstname, submittedByLastname, rejectedOnDate, rejectedByUsername, rejectedByFirstname, rejectedByLastname,
@@ -998,7 +999,7 @@ public class LoanReadPlatformServiceImpl implements LoanReadPlatformService, Loa
                     approvedByFirstname, approvedByLastname, expectedDisbursementDate, actualDisbursementDate, disbursedByUsername,
                     disbursedByFirstname, disbursedByLastname, closedOnDate, closedByUsername, closedByFirstname, closedByLastname,
                     actualMaturityDate, expectedMaturityDate, writtenOffOnDate, closedByUsername, closedByFirstname, closedByLastname,
-                    chargedOffOnDate, chargedOffByUsername, chargedOffByFirstname, chargedOffByLastname, null);
+                    chargedOffOnDate, chargedOffByUsername, chargedOffByFirstname, chargedOffByLastname, overpaidOnDate);
 
             final BigDecimal principal = rs.getBigDecimal("principal");
             final BigDecimal approvedPrincipal = rs.getBigDecimal("approvedPrincipal");
@@ -1225,7 +1226,6 @@ public class LoanReadPlatformServiceImpl implements LoanReadPlatformService, Loa
 
             final boolean isFraud = rs.getBoolean("isFraud");
             final LocalDate lastClosedBusinessDate = JdbcSupport.getLocalDate(rs, "lastClosedBusinessDate");
-            final LocalDate overpaidOnDate = JdbcSupport.getLocalDate(rs, "overpaidOnDate");
 
             final boolean enableDownPayment = rs.getBoolean("enableDownPayment");
             final BigDecimal disbursedAmountPercentageForDownPayment = rs.getBigDecimal("disbursedAmountPercentageForDownPayment");
@@ -1781,7 +1781,7 @@ public class LoanReadPlatformServiceImpl implements LoanReadPlatformService, Loa
         if (frequencyType == null) {
             return null;
         }
-        // Per PS-2795: calculated start date = current date + 1 unit of original frequency type
+        // calculated start date = current date + 1 unit of original frequency type
         return switch (frequencyType) {
             case DAYS -> businessDate.plusDays(1);
             case WEEKS -> businessDate.plusWeeks(1);

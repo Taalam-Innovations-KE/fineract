@@ -23,26 +23,23 @@ import static org.apache.fineract.interoperation.util.InteropUtil.ENTITY_NAME_ID
 import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
 import java.util.List;
+import java.util.Locale;
+import lombok.RequiredArgsConstructor;
 import org.apache.fineract.commands.annotation.CommandType;
 import org.apache.fineract.commands.handler.NewCommandSourceHandler;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.interoperation.domain.InteropIdentifierType;
 import org.apache.fineract.interoperation.service.InteropService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @CommandType(entity = ENTITY_NAME_IDENTIFIER, action = "DELETE")
+@RequiredArgsConstructor
 public class DeleteInteropIdentifierHandler implements NewCommandSourceHandler {
 
     private final InteropService interopService;
-
-    @Autowired
-    public DeleteInteropIdentifierHandler(InteropService interopService) {
-        this.interopService = interopService;
-    }
 
     @Transactional
     @Override
@@ -51,7 +48,7 @@ public class DeleteInteropIdentifierHandler implements NewCommandSourceHandler {
         int length = split.size();
         String subIdOrType = Strings.emptyToNull(split.get(length - 1).strip());
         String idValue = split.get(length - 2);
-        InteropIdentifierType idType = InteropIdentifierType.valueOf(split.get(length - 3).toUpperCase());
+        InteropIdentifierType idType = InteropIdentifierType.valueOf(split.get(length - 3).toUpperCase(Locale.ROOT));
         return this.interopService.deleteAccountIdentifier(idType, idValue, subIdOrType);
     }
 }

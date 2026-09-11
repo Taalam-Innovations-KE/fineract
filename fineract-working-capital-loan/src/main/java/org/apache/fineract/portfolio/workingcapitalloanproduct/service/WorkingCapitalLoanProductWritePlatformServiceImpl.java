@@ -53,6 +53,7 @@ import org.apache.fineract.portfolio.workingcapitalloanproduct.WorkingCapitalLoa
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalAccountingRuleType;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalAdvancedPaymentAllocationsJsonParser;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalAmortizationType;
+import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanBreachStartType;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanDelinquencyStartType;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanProduct;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanProductConfigurableAttributes;
@@ -401,13 +402,18 @@ public class WorkingCapitalLoanProductWritePlatformServiceImpl implements Workin
                 .stringValueOfParameterNamed(WorkingCapitalLoanProductConstants.delinquencyStartTypeParamName);
         final WorkingCapitalLoanDelinquencyStartType delinquencyStartType = WorkingCapitalLoanDelinquencyStartType
                 .fromString(delinquencyStartTypeValue);
-        final Integer breachGraceDays = command.parameterExists(WorkingCapitalLoanProductConstants.breachGraceDaysParamName)
-                ? command.integerValueOfParameterNamed(WorkingCapitalLoanProductConstants.breachGraceDaysParamName)
-                : 0;
+        final Integer breachGraceDaysValue = command
+                .integerValueOfParameterNamed(WorkingCapitalLoanProductConstants.breachGraceDaysParamName);
+        final Integer breachGraceDays = breachGraceDaysValue != null ? breachGraceDaysValue : Integer.valueOf(0);
+        final String breachStartTypeValue = command
+                .stringValueOfParameterNamed(WorkingCapitalLoanProductConstants.breachStartTypeParamName);
+        final WorkingCapitalLoanBreachStartType parsedBreachStartType = WorkingCapitalLoanBreachStartType.fromString(breachStartTypeValue);
+        final WorkingCapitalLoanBreachStartType breachStartType = parsedBreachStartType != null ? parsedBreachStartType
+                : WorkingCapitalLoanBreachStartType.DISBURSEMENT;
 
         final WorkingCapitalLoanProductRelatedDetail relatedDetail = new WorkingCapitalLoanProductRelatedDetail(amortizationType,
                 npvDayCount, principal, periodPaymentRate, repaymentEvery, repaymentFrequencyType, discount, delinquencyGraceDays,
-                delinquencyStartType, breachGraceDays);
+                delinquencyStartType, breachGraceDays, breachStartType);
 
         // Min/max constraints
         final BigDecimal minPrincipal = command.parameterExists(WorkingCapitalLoanProductConstants.minPrincipalParamName)

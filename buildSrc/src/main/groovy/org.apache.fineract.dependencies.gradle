@@ -25,12 +25,12 @@ dependencyManagement {
         mavenBom 'com.squareup.okhttp3:okhttp-bom:4.12.0'
         mavenBom 'org.slf4j:slf4j-bom:2.0.17'
         mavenBom 'io.micrometer:micrometer-bom:1.16.5'
-        mavenBom 'org.springframework.boot:spring-boot-dependencies:3.5.14'
+        mavenBom 'org.springframework.boot:spring-boot-dependencies:3.5.15'
         mavenBom 'io.awspring.cloud:spring-cloud-aws-dependencies:4.0.2'
         mavenBom 'io.opentelemetry:opentelemetry-bom:1.62.0'
         mavenBom 'org.jetbrains.kotlin:kotlin-bom:2.3.21'
         mavenBom 'org.junit:junit-bom:5.14.4'
-        mavenBom 'com.fasterxml.jackson:jackson-bom:2.21.3'
+        mavenBom 'com.fasterxml.jackson:jackson-bom:2.22.1'
         mavenBom 'io.cucumber:cucumber-bom:7.34.3'
         mavenBom 'org.mockito:mockito-bom:5.23.0'
         mavenBom 'software.amazon.awssdk:bom:2.44.4'
@@ -44,8 +44,8 @@ dependencyManagement {
         // We do not use :+ to get the latest available version available on Maven Central, as that could suddenly break things.
         // We use the Renovate Bot to automatically propose Pull Requests (PRs) when upgrades for all of these versions are available.
 
-        dependency 'ch.qos.logback:logback-core:1.5.32'
-        dependency 'ch.qos.logback:logback-classic:1.5.32'
+        dependency 'ch.qos.logback:logback-core:1.5.35'
+        dependency 'ch.qos.logback:logback-classic:1.5.35'
         dependency 'ch.qos.logback.contrib:logback-json-classic:0.1.5'
         dependency 'ch.qos.logback.contrib:logback-jackson:0.1.5'
         dependency 'org.codehaus.janino:janino:3.1.12'
@@ -74,9 +74,6 @@ dependencyManagement {
         dependency 'org.ehcache:ehcache:3.12.0'
         dependency 'com.github.spullara.mustache.java:compiler:0.9.14'
         dependency 'com.jayway.jsonpath:json-path:3.0.0'
-        dependency ('org.apache.tika:tika-core:3.3.0') {
-            exclude 'commons-logging:commons-logging'
-        }
         dependency ('org.apache.tika:tika-core:3.3.0') {
             exclude 'commons-logging:commons-logging'
         }
@@ -143,7 +140,6 @@ dependencyManagement {
         dependency 'joda-time:joda-time:2.14.2'
 
         dependency 'io.github.classgraph:classgraph:4.8.184'
-        dependency 'org.awaitility:awaitility:4.3.0'
         dependency 'com.github.spotbugs:spotbugs-annotations:4.9.8'
         dependency 'javax.cache:cache-api:1.1.1'
         dependency 'org.mock-server:mockserver-junit-jupiter:5.14.0'
@@ -230,7 +226,6 @@ dependencyManagement {
         dependencySet(group: 'org.apache.poi', version: '5.5.1') {
             entry 'poi'
             entry 'poi-ooxml'
-            entry 'poi-ooxml-schemas'
         }
 
         dependencySet(group: 'io.rest-assured', version: '5.5.7') {
@@ -238,8 +233,6 @@ dependencyManagement {
             entry 'json-path'
             entry 'xml-path'
         }
-        dependency 'org.apache.groovy:groovy-xml:5.0.6'
-        dependency 'org.apache.groovy:groovy-json:5.0.6'
 
         dependency 'org.mapstruct:mapstruct:1.6.3'
         dependency 'org.mapstruct:mapstruct-processor:1.6.3'
@@ -295,22 +288,22 @@ dependencyManagement {
         dependency 'org.springframework:spring-core:6.2.18'
         dependency 'org.springframework.security:spring-security-core:6.5.10'
         // Keep Netty on the 4.1 line for MockServer compatibility.
-        dependency 'io.netty:netty-buffer:4.1.133.Final'
-        dependency 'io.netty:netty-common:4.1.133.Final'
-        dependency 'io.netty:netty-codec:4.1.133.Final'
-        dependency 'io.netty:netty-codec-base:4.1.133.Final'
-        dependency 'io.netty:netty-codec-compression:4.1.133.Final'
-        dependency 'io.netty:netty-codec-http:4.1.133.Final'
-        dependency 'io.netty:netty-codec-http2:4.1.133.Final'
-        dependency 'io.netty:netty-codec-marshalling:4.1.133.Final'
-        dependency 'io.netty:netty-codec-protobuf:4.1.133.Final'
-        dependency 'io.netty:netty-codec-socks:4.1.133.Final'
-        dependency 'io.netty:netty-handler:4.1.133.Final'
-        dependency 'io.netty:netty-handler-proxy:4.1.133.Final'
-        dependency 'io.netty:netty-resolver:4.1.133.Final'
-        dependency 'io.netty:netty-transport:4.1.133.Final'
-        dependency 'io.netty:netty-transport-classes-epoll:4.1.133.Final'
-        dependency 'io.netty:netty-transport-native-unix-common:4.1.133.Final'
+        dependency 'io.netty:netty-buffer:4.1.135.Final'
+        dependency 'io.netty:netty-common:4.1.135.Final'
+        dependency 'io.netty:netty-codec:4.1.135.Final'
+        dependency 'io.netty:netty-codec-base:4.1.135.Final'
+        dependency 'io.netty:netty-codec-compression:4.1.135.Final'
+        dependency 'io.netty:netty-codec-http:4.1.135.Final'
+        dependency 'io.netty:netty-codec-http2:4.1.135.Final'
+        dependency 'io.netty:netty-codec-marshalling:4.1.135.Final'
+        dependency 'io.netty:netty-codec-protobuf:4.1.135.Final'
+        dependency 'io.netty:netty-codec-socks:4.1.135.Final'
+        dependency 'io.netty:netty-handler:4.1.135.Final'
+        dependency 'io.netty:netty-handler-proxy:4.1.135.Final'
+        dependency 'io.netty:netty-resolver:4.1.135.Final'
+        dependency 'io.netty:netty-transport:4.1.135.Final'
+        dependency 'io.netty:netty-transport-classes-epoll:4.1.135.Final'
+        dependency 'io.netty:netty-transport-native-unix-common:4.1.135.Final'
         dependency 'at.yawk.lz4:lz4-java:1.11.0'
         dependency 'org.thymeleaf:thymeleaf:3.1.5.RELEASE'
         dependency 'org.thymeleaf:thymeleaf-spring6:3.1.5.RELEASE'

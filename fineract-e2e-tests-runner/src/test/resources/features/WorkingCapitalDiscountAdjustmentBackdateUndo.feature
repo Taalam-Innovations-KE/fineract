@@ -155,8 +155,8 @@ Feature: Working Capital Discount Adjustment Backdated and Undo
     When Admin runs inline COB job for Working Capital Loan
     Then Working Capital Loan Transactions tab has a "DISCOUNT_FEE_AMORTIZATION_ADJUSTMENT" transaction with date "05 January 2026" which has the following Journal entries:
       | Type      | Account code | Account name              | Debit | Credit |
-      | INCOME    | 404000       | Interest Income           | 28.70 |        |
-      | LIABILITY | 240005       | Deferred Interest Revenue |       | 28.70  |
+      | INCOME    | 404000       | Interest Income           | 28.7  |        |
+      | LIABILITY | 240005       | Deferred Interest Revenue |       | 28.7   |
     When Admin undo the last Discount fee adjustment on Working Capital loan account
     And Working capital loan account has the correct data:
       | discount | principal | totalPaidPrincipal |
@@ -173,10 +173,10 @@ Feature: Working Capital Discount Adjustment Backdated and Undo
       | 05 January 2026 | Discount Fee Amortization Adjustment | 28.70             |                  |                   |                       | true     |
     Then Working Capital Loan Transactions tab has a reversed "DISCOUNT_FEE_AMORTIZATION_ADJUSTMENT" transaction with date "05 January 2026" which has the following Journal entries:
       | Type      | Account code | Account name              | Debit | Credit |
-      | INCOME    | 404000       | Interest Income           | 28.70 |        |
-      | LIABILITY | 240005       | Deferred Interest Revenue |       | 28.70  |
-      | LIABILITY | 240005       | Deferred Interest Revenue | 28.70 |        |
-      | INCOME    | 404000       | Interest Income           |       | 28.70  |
+      | INCOME    | 404000       | Interest Income           | 28.7  |        |
+      | LIABILITY | 240005       | Deferred Interest Revenue |       | 28.7   |
+      | LIABILITY | 240005       | Deferred Interest Revenue | 28.7  |        |
+      | INCOME    | 404000       | Interest Income           |       | 28.7   |
 
   @TestRailId:C83068
   Scenario: Multiple backdated discount fee adjustments are allowed; undo of the last one restores its share of the discount
@@ -433,8 +433,8 @@ Feature: Working Capital Discount Adjustment Backdated and Undo
     When Admin sets the business date to "01 January 2026"
     And Admin creates a client with random data
     And Admin creates a working capital loan with the following data:
-      | LoanProduct                | submittedOnDate | expectedDisbursementDate | principalAmount | totalPaymentVolume | periodPaymentRate | discount |
-      | WCLP_ACCOUNTING_CASH_BASED | 01 January 2026 | 01 January 2026          | 100             | 100                | 18                | 0        |
+      | LoanProduct         | submittedOnDate | expectedDisbursementDate | principalAmount | totalPaymentVolume | periodPaymentRate | discount |
+      | WCLP_ACC_DEF_REV_AM | 01 January 2026 | 01 January 2026          | 100             | 100                | 18                | 0        |
     Then Working capital loan creation was successful
     Then Admin successfully approves the working capital loan on "01 January 2026" with "100" amount and expected disbursement date on "01 January 2026"
     Then Admin successfully disburse the Working Capital loan on "01 January 2026" with "100" EUR transaction amount

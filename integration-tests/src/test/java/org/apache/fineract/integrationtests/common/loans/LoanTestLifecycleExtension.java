@@ -74,11 +74,11 @@ public class LoanTestLifecycleExtension implements AfterEachCallback, BeforeEach
 
     private void closeActiveLoan(Long loanId, LocalDate cleanupDate) {
         GetLoansLoanIdResponse loanResponse = Calls
-                .ok(FineractClientHelper.getFineractClient().loans.retrieveLoan(loanId, null, "all", null, null));
+                .ok(FineractClientHelper.getFineractClient().loans.retrieveOneLoan(loanId, null, "all", null, null));
         if (MathUtil.isLessThan(loanResponse.getApprovedPrincipal(), loanResponse.getProposedPrincipal())) {
             PutLoansApprovedAmountRequest request = new PutLoansApprovedAmountRequest().amount(loanResponse.getProposedPrincipal())
                     .locale("en");
-            Calls.ok(FineractClientHelper.getFineractClient().loans.modifyLoanApprovedAmount(loanId, request));
+            Calls.ok(FineractClientHelper.getFineractClient().loans.updateApprovedAmountLoan(loanId, request));
         }
         loanResponse.getDisbursementDetails().forEach(disbursementDetail -> {
             if (disbursementDetail.getActualDisbursementDate() == null) {
@@ -91,8 +91,8 @@ public class LoanTestLifecycleExtension implements AfterEachCallback, BeforeEach
         GetLoansLoanIdTransactionsTemplateResponse prepayDetail = this.loanTransactionHelper.getPrepaymentAmount(loanId,
                 dateFormatter.format(cleanupDate), DATE_FORMAT);
         LocalDate transactionDate = prepayDetail.getDate();
-        Double amount = prepayDetail.getAmount();
-        Double netDisbursalAmount = prepayDetail.getNetDisbursalAmount();
+        Double amount = prepayDetail.getAmount() != null ? prepayDetail.getAmount().doubleValue() : 0.0;
+        Double netDisbursalAmount = prepayDetail.getNetDisbursalAmount() != null ? prepayDetail.getNetDisbursalAmount().doubleValue() : 0.0;
         Double repayAmount = Double.compare(amount, 0.0) > 0 ? amount : netDisbursalAmount;
         loanTransactionHelper.makeLoanRepayment(loanId, new PostLoansLoanIdTransactionsRequest().dateFormat(DATE_FORMAT)
                 .transactionDate(dateFormatter.format(transactionDate)).locale("en").transactionAmount(repayAmount));

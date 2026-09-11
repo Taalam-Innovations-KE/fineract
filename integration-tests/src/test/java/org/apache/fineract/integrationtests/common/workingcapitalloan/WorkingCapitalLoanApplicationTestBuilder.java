@@ -27,6 +27,7 @@ import java.util.List;
 import org.apache.fineract.client.models.PostPaymentAllocationOrder;
 import org.apache.fineract.client.models.PostPaymentAllocationRule;
 import org.apache.fineract.client.models.PostWorkingCapitalLoansLoanIdRequest;
+import org.apache.fineract.client.models.PostWorkingCapitalLoansOriginatorData;
 import org.apache.fineract.client.models.PostWorkingCapitalLoansRequest;
 import org.apache.fineract.client.models.PutWorkingCapitalLoansLoanIdRequest;
 
@@ -59,6 +60,8 @@ public class WorkingCapitalLoanApplicationTestBuilder {
     private Integer delinquencyGraceDays;
     private String delinquencyStartType;
     private Integer breachGraceDays;
+    private String breachStartType;
+    private List<PostWorkingCapitalLoansOriginatorData> originators;
 
     public WorkingCapitalLoanApplicationTestBuilder withClientId(final Long clientId) {
         this.clientId = clientId;
@@ -160,8 +163,18 @@ public class WorkingCapitalLoanApplicationTestBuilder {
         return this;
     }
 
+    public WorkingCapitalLoanApplicationTestBuilder withBreachStartType(final String breachStartType) {
+        this.breachStartType = breachStartType;
+        return this;
+    }
+
     public WorkingCapitalLoanApplicationTestBuilder withPaymentAllocationTypes(final List<String> paymentAllocationTypes) {
         this.paymentAllocationTypes = paymentAllocationTypes;
+        return this;
+    }
+
+    public WorkingCapitalLoanApplicationTestBuilder withOriginators(final List<PostWorkingCapitalLoansOriginatorData> originators) {
+        this.originators = originators;
         return this;
     }
 
@@ -215,6 +228,9 @@ public class WorkingCapitalLoanApplicationTestBuilder {
         if (breachGraceDays != null) {
             request.breachGraceDays(breachGraceDays);
         }
+        if (breachStartType != null) {
+            request.breachStartType(breachStartType);
+        }
         if (breachId != null) {
             request.breachId(breachId);
         }
@@ -223,6 +239,9 @@ public class WorkingCapitalLoanApplicationTestBuilder {
         }
         if (paymentAllocationTypes != null && !paymentAllocationTypes.isEmpty()) {
             request.paymentAllocation(buildPaymentAllocationRules());
+        }
+        if (originators != null && !originators.isEmpty()) {
+            request.originators(originators);
         }
         return request;
     }

@@ -21,11 +21,9 @@ package org.apache.fineract.portfolio.workingcapitalloan.repository;
 
 import java.time.LocalDate;
 import java.util.List;
-import org.apache.fineract.portfolio.workingcapitalloan.domain.WorkingCapitalLoan;
 import org.apache.fineract.portfolio.workingcapitalloan.domain.WorkingCapitalLoanDelinquencyRangeSchedule;
 import org.apache.fineract.portfolio.workingcapitalloan.domain.WorkingCapitalLoanDelinquencyRangeScheduleTagHistory;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Repository;
 
@@ -34,20 +32,10 @@ public interface WorkingCapitalLoanDelinquencyRangeScheduleTagHistoryRepository
         extends JpaRepository<WorkingCapitalLoanDelinquencyRangeScheduleTagHistory, Long>,
         CrudRepository<WorkingCapitalLoanDelinquencyRangeScheduleTagHistory, Long> {
 
-    List<WorkingCapitalLoanDelinquencyRangeScheduleTagHistory> findByRangeSchedule(
-            WorkingCapitalLoanDelinquencyRangeSchedule rangeSchedule);
-
-    @Modifying
-    void deleteByLoan(WorkingCapitalLoan loan);
-
-    @Modifying
-    void deleteByRangeSchedule(WorkingCapitalLoanDelinquencyRangeSchedule rangeSchedule);
-
-    List<WorkingCapitalLoanDelinquencyRangeScheduleTagHistory> findByLoanAndLiftedOnDateOrderByAddedOnDateAsc(WorkingCapitalLoan loan,
-            LocalDate liftedOnDate);
-
     List<WorkingCapitalLoanDelinquencyRangeScheduleTagHistory> findByRangeScheduleAndLiftedOnDateOrderByAddedOnDateAsc(
             WorkingCapitalLoanDelinquencyRangeSchedule rangeSchedule, LocalDate liftedOnDate);
 
     List<WorkingCapitalLoanDelinquencyRangeScheduleTagHistory> findByLoanIdOrderByAddedOnDateDesc(Long loanId);
+
+    List<WorkingCapitalLoanDelinquencyRangeScheduleTagHistory> findByLoanIdAndLiftedOnDateIsNull(Long loanId);
 }

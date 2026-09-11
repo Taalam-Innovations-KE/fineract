@@ -49,6 +49,7 @@ import org.apache.fineract.portfolio.workingcapitalloanproduct.WorkingCapitalLoa
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalAccountingRuleType;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalAdvancedPaymentAllocationsJsonParser;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalAmortizationType;
+import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanBreachStartType;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanDelinquencyStartType;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.exception.WorkingCapitalLoanProductDuplicateExternalIdException;
 import org.apache.fineract.portfolio.workingcapitalloanproduct.exception.WorkingCapitalLoanProductDuplicateNameException;
@@ -100,6 +101,7 @@ public class WorkingCapitalLoanProductDataValidator {
                     WorkingCapitalLoanProductConstants.delinquencyGraceDaysParamName, //
                     WorkingCapitalLoanProductConstants.delinquencyStartTypeParamName, //
                     WorkingCapitalLoanProductConstants.breachGraceDaysParamName, //
+                    WorkingCapitalLoanProductConstants.breachStartTypeParamName, //
                     WorkingCapitalLoanProductConstants.accountingRuleParamName, //
                     WorkingCapitalLoanProductConstants.fundSourceAccountIdParamName, //
                     WorkingCapitalLoanProductConstants.loanPortfolioAccountIdParamName, //
@@ -407,6 +409,22 @@ public class WorkingCapitalLoanProductDataValidator {
                 }
             }
         }
+
+        if (this.fromApiJsonHelper.parameterExists(WorkingCapitalLoanProductConstants.breachStartTypeParamName, element)) {
+            final String breachStartTypeValue = this.fromApiJsonHelper
+                    .extractStringNamed(WorkingCapitalLoanProductConstants.breachStartTypeParamName, element);
+            baseDataValidator.reset().parameter(WorkingCapitalLoanProductConstants.breachStartTypeParamName).value(breachStartTypeValue)
+                    .ignoreIfNull();
+
+            if (breachStartTypeValue != null) {
+                final WorkingCapitalLoanBreachStartType breachStartType = WorkingCapitalLoanBreachStartType
+                        .fromString(breachStartTypeValue);
+                if (breachStartType == null) {
+                    baseDataValidator.reset().parameter(WorkingCapitalLoanProductConstants.breachStartTypeParamName)
+                            .failWithCode("invalid.breach.start.type");
+                }
+            }
+        }
     }
 
     private BigDecimal validateTermFields(final JsonElement element, final DataValidatorBuilder baseDataValidator, final boolean required) {
@@ -593,10 +611,10 @@ public class WorkingCapitalLoanProductDataValidator {
                     .extractStringNamed(WorkingCapitalLoanProductConstants.accountingRuleParamName, element);
             baseDataValidator.reset().parameter(WorkingCapitalLoanProductConstants.accountingRuleParamName).value(accountingRuleValue)
                     .notBlank().isOneOfTheseStringValues(
-                            List.of(WorkingCapitalAccountingRuleType.NONE.name(), WorkingCapitalAccountingRuleType.CASH_BASED.name()));
+                            List.of(WorkingCapitalAccountingRuleType.NONE.name(), WorkingCapitalAccountingRuleType.ACC_DEF_REV_AM.name()));
 
-            if (WorkingCapitalAccountingRuleType.CASH_BASED.name().equals(accountingRuleValue)) {
-                // Required GL accounts for Cash based
+            if (WorkingCapitalAccountingRuleType.ACC_DEF_REV_AM.name().equals(accountingRuleValue)) {
+                // Required GL accounts for accrual with deferred revenue amortization
                 final Long fundSourceAccountId = this.fromApiJsonHelper
                         .extractLongNamed(WorkingCapitalLoanProductConstants.fundSourceAccountIdParamName, element);
                 baseDataValidator.reset().parameter(WorkingCapitalLoanProductConstants.fundSourceAccountIdParamName)

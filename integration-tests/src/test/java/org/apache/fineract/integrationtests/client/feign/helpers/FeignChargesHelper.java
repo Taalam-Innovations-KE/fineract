@@ -23,6 +23,7 @@ import static org.apache.fineract.client.feign.util.FeignCalls.ok;
 
 import org.apache.fineract.client.feign.FineractFeignClient;
 import org.apache.fineract.client.feign.util.CallFailedRuntimeException;
+import org.apache.fineract.client.models.ChargeData;
 import org.apache.fineract.client.models.ChargeRequest;
 import org.apache.fineract.client.models.DeleteChargesChargeIdResponse;
 import org.apache.fineract.client.models.DeleteClientsClientIdChargesChargeIdResponse;
@@ -35,15 +36,18 @@ import org.apache.fineract.client.models.PostClientsClientIdChargesRequest;
 import org.apache.fineract.client.models.PostClientsClientIdChargesResponse;
 import org.apache.fineract.client.models.PutChargesChargeIdResponse;
 import org.apache.fineract.integrationtests.client.feign.modules.ChargeRequestBuilders;
+import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
 
 public class FeignChargesHelper {
 
     private static final String PAY_COMMAND = "paycharge";
 
     private final FineractFeignClient fineractClient;
+    private final ChargeTemplateApi chargeTemplateApi;
 
     public FeignChargesHelper(FineractFeignClient fineractClient) {
         this.fineractClient = fineractClient;
+        this.chargeTemplateApi = fineractClient.create(ChargeTemplateApi.class);
     }
 
     public PostChargesResponse createCharge(ChargeRequest request) {
@@ -66,20 +70,71 @@ public class FeignChargesHelper {
         return fail(() -> fineractClient.charges().retrieveOneCharge(chargeId));
     }
 
-    public Long createLoanSpecifiedDueDateCharge(double amount) {
-        return createCharge(ChargeRequestBuilders.loanSpecifiedDueDateFee(amount)).getResourceId();
+    public CallFailedRuntimeException createChargeExpectingError(ChargeRequest request) {
+        return fail(() -> fineractClient.charges().createCharge(request));
     }
 
-    public Long createLoanSpecifiedDueDateCharge(double amount, String currencyCode) {
-        return createCharge(ChargeRequestBuilders.loanSpecifiedDueDateFee(amount, currencyCode)).getResourceId();
+    public CallFailedRuntimeException updateChargeExpectingError(Long chargeId, ChargeRequest request) {
+        return fail(() -> fineractClient.charges().updateCharge(chargeId, request));
     }
 
-    public Long createLoanDisbursementCharge(double amount) {
-        return createCharge(ChargeRequestBuilders.loanDisbursementFee(amount)).getResourceId();
+    public ChargeData getChargeTemplate(Long chargeAppliesTo, Long chargeTimeType) {
+        return ok(() -> fineractClient.charges().retrieveTemplateCharge(chargeAppliesTo, chargeTimeType));
     }
 
-    public Long createClientSpecifiedDueDateCharge(double amount) {
-        return createCharge(ChargeRequestBuilders.clientSpecifiedDueDateFee(amount)).getResourceId();
+    public ChargeData getChargeWithTemplate(Long chargeId) {
+        return ok(() -> chargeTemplateApi.retrieveChargeWithTemplate(chargeId));
+    }
+
+    public PostChargesResponse createLoanSpecifiedDueDateCharge(double amount) {
+        return createCharge(ChargeRequestBuilders.loanSpecifiedDueDateFee(amount));
+    }
+
+    public PostChargesResponse createLoanSpecifiedDueDateCharge(double amount, String currencyCode) {
+        return createCharge(ChargeRequestBuilders.loanSpecifiedDueDateFee(amount, currencyCode));
+    }
+
+    public PostChargesResponse createLoanDisbursementCharge(double amount) {
+        return createCharge(ChargeRequestBuilders.loanDisbursementFee(amount));
+    }
+
+    public PostChargesResponse createLoanSpecifiedDueDatePenalty(double amount) {
+        return createCharge(ChargeRequestBuilders.loanSpecifiedDueDatePenalty(amount));
+    }
+
+    public PostChargesResponse createLoanSpecifiedDueDatePercentageOfInterestFee(double percentage) {
+        return createCharge(ChargeRequestBuilders.loanSpecifiedDueDatePercentageOfInterestFee(percentage));
+    }
+
+    public PostChargesResponse createLoanOverdueFeePercentageOfAmountAndInterest(double percentage) {
+        return createCharge(ChargeRequestBuilders.loanOverdueFeePercentageOfAmountAndInterest(percentage));
+    }
+
+    public PostChargesResponse createLoanDisbursementCharge(ChargeCalculationType chargeCalculationType, double amount) {
+        return createCharge(ChargeRequestBuilders.loanDisbursementCharge(chargeCalculationType, amount));
+    }
+
+    public PostChargesResponse createLoanSpecifiedDueDateCharge(ChargeCalculationType chargeCalculationType, double amount,
+            boolean penalty) {
+        return createCharge(ChargeRequestBuilders.loanSpecifiedDueDateCharge(chargeCalculationType, amount, penalty));
+    }
+
+    public PostChargesResponse createLoanInstallmentCharge(ChargeCalculationType chargeCalculationType, double amount, boolean penalty) {
+        return createCharge(ChargeRequestBuilders.loanInstallmentCharge(chargeCalculationType, amount, penalty));
+    }
+
+    public PostChargesResponse createLoanSpecifiedDueDateAccountTransferCharge(ChargeCalculationType chargeCalculationType, double amount,
+            boolean penalty) {
+        return createCharge(ChargeRequestBuilders.loanSpecifiedDueDateAccountTransferCharge(chargeCalculationType, amount, penalty));
+    }
+
+    public PostChargesResponse createLoanInstallmentAccountTransferCharge(ChargeCalculationType chargeCalculationType, double amount,
+            boolean penalty) {
+        return createCharge(ChargeRequestBuilders.loanInstallmentAccountTransferCharge(chargeCalculationType, amount, penalty));
+    }
+
+    public PostChargesResponse createClientSpecifiedDueDateCharge(double amount) {
+        return createCharge(ChargeRequestBuilders.clientSpecifiedDueDateFee(amount));
     }
 
     public PostClientsClientIdChargesResponse addClientCharge(Long clientId, PostClientsClientIdChargesRequest request) {

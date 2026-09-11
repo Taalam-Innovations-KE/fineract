@@ -20,14 +20,23 @@ package org.apache.fineract.integrationtests.client.feign.helpers;
 
 import static org.apache.fineract.client.feign.util.FeignCalls.ok;
 
+import java.util.List;
 import java.util.Map;
 import org.apache.fineract.client.feign.FineractFeignClient;
 import org.apache.fineract.client.models.DeleteSavingsAccountsAccountIdResponse;
+import org.apache.fineract.client.models.GetSavingsAccountsSavingsAccountIdChargesResponse;
+import org.apache.fineract.client.models.GetSavingsAccountsSavingsAccountIdChargesSavingsAccountChargeIdResponse;
 import org.apache.fineract.client.models.PostSavingsAccountsAccountIdRequest;
 import org.apache.fineract.client.models.PostSavingsAccountsAccountIdResponse;
 import org.apache.fineract.client.models.PostSavingsAccountsRequest;
 import org.apache.fineract.client.models.PostSavingsAccountsResponse;
+import org.apache.fineract.client.models.PostSavingsAccountsSavingsAccountIdChargesRequest;
+import org.apache.fineract.client.models.PostSavingsAccountsSavingsAccountIdChargesResponse;
+import org.apache.fineract.client.models.PutSavingsAccountsAccountIdRequest;
+import org.apache.fineract.client.models.PutSavingsAccountsAccountIdResponse;
 import org.apache.fineract.client.models.SavingsAccountData;
+import org.apache.fineract.client.models.SavingsAccountStatusEnumData;
+import org.apache.fineract.client.models.SavingsAccountSummaryData;
 import org.apache.fineract.integrationtests.client.feign.modules.SavingsRequestBuilders;
 
 public class FeignSavingsHelper {
@@ -79,8 +88,36 @@ public class FeignSavingsHelper {
         return ok(() -> fineractClient.savingsAccount().retrieveSavingsAccount(savingsId, Map.of("associations", associations)));
     }
 
+    public SavingsAccountSummaryData getSavingsSummary(Long savingsId) {
+        return getSavingsDetails(savingsId, "summary").getSummary();
+    }
+
     public DeleteSavingsAccountsAccountIdResponse deleteSavingsApplication(Long savingsId) {
         return ok(() -> fineractClient.savingsAccount().deleteSavingsAccount(savingsId));
+    }
+
+    public PostSavingsAccountsAccountIdResponse withdrawnByApplicant(Long savingsId, String withdrawnOnDate) {
+        PostSavingsAccountsAccountIdRequest request = SavingsRequestBuilders.withdrawnByApplicant(withdrawnOnDate);
+        return ok(() -> fineractClient.savingsAccount().handleCommandsSavingsAccount(savingsId, request, "withdrawnByApplicant"));
+    }
+
+    public PostSavingsAccountsAccountIdResponse postInterest(Long savingsId) {
+        PostSavingsAccountsAccountIdRequest request = new PostSavingsAccountsAccountIdRequest();
+        return ok(() -> fineractClient.savingsAccount().handleCommandsSavingsAccount(savingsId, request, "postInterest"));
+    }
+
+    public PostSavingsAccountsAccountIdResponse calculateInterest(Long savingsId) {
+        PostSavingsAccountsAccountIdRequest request = new PostSavingsAccountsAccountIdRequest();
+        return ok(() -> fineractClient.savingsAccount().handleCommandsSavingsAccount(savingsId, request, "calculateInterest"));
+    }
+
+    public PutSavingsAccountsAccountIdResponse updateSavingsAccount(Long savingsId, PutSavingsAccountsAccountIdRequest request) {
+        return ok(() -> fineractClient.savingsAccount().updateSavingsAccount(savingsId, request, (String) null));
+    }
+
+    /** The status is on the account itself, so no associations are requested. */
+    public SavingsAccountStatusEnumData getSavingsStatus(Long savingsId) {
+        return ok(() -> fineractClient.savingsAccount().retrieveSavingsAccount(savingsId, Map.of())).getStatus();
     }
 
     public Long createApproveActivateSavings(Long clientId, Long productId, String date) {
@@ -88,5 +125,19 @@ public class FeignSavingsHelper {
         approveSavings(savingsId, date);
         activateSavings(savingsId, date);
         return savingsId;
+    }
+
+    public PostSavingsAccountsSavingsAccountIdChargesResponse addSavingsAccountCharge(Long savingsId,
+            PostSavingsAccountsSavingsAccountIdChargesRequest request) {
+        return ok(() -> fineractClient.savingsCharges().createSavingsAccountCharge(savingsId, request));
+    }
+
+    public GetSavingsAccountsSavingsAccountIdChargesSavingsAccountChargeIdResponse getSavingsAccountCharge(Long savingsId,
+            Long savingsAccountChargeId) {
+        return ok(() -> fineractClient.savingsCharges().retrieveOneSavingsAccountCharge(savingsId, savingsAccountChargeId));
+    }
+
+    public List<GetSavingsAccountsSavingsAccountIdChargesResponse> getSavingsCharges(Long savingsId) {
+        return ok(() -> fineractClient.savingsCharges().retrieveAllSavingsAccountCharges(savingsId, "all"));
     }
 }

@@ -48,6 +48,13 @@ public class WorkingCapitalLoanProductRelatedDetails {
     @Embedded
     private MonetaryCurrency currency;
 
+    /**
+     * Active contractual principal. On a loan it tracks the lifecycle: the proposed amount while the application is
+     * submitted or modified, the approved amount from approval, and the amount actually disbursed from disbursement.
+     * Undoing approval or disbursal restores the previous stage's value. It is not the outstanding balance - that lives
+     * in {@code m_wc_loan_balance} and is published as {@code summary.principalOutstanding}. On a product this is the
+     * default principal offered to new applications.
+     */
     @Column(name = "principal_amount", scale = 6, precision = 19)
     private BigDecimal principal;
 
@@ -98,4 +105,8 @@ public class WorkingCapitalLoanProductRelatedDetails {
 
     @Column(name = "breach_grace_days", nullable = true)
     private Integer breachGraceDays;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "breach_start_type", nullable = false)
+    private WorkingCapitalLoanBreachStartType breachStartType;
 }

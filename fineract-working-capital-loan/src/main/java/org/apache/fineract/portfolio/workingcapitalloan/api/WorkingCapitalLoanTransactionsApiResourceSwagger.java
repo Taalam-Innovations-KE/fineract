@@ -81,6 +81,26 @@ public final class WorkingCapitalLoanTransactionsApiResourceSwagger {
         public BigDecimal feeChargesPortion;
         @Schema(example = "0.00", description = "Penalty charges portion from allocation")
         public BigDecimal penaltyChargesPortion;
+        public BigDecimal overpaymentPortion;
+        @Schema(description = "Which charges this transaction settled, and for how much")
+        public List<GetWorkingCapitalLoanChargePaidByData> chargePaidByList;
+    }
+
+    @Schema(description = "How much of a transaction settled one specific charge")
+    public static final class GetWorkingCapitalLoanChargePaidByData {
+
+        private GetWorkingCapitalLoanChargePaidByData() {}
+
+        @Schema(example = "1")
+        public Long id;
+        @Schema(example = "100.00")
+        public BigDecimal amount;
+        @Schema(example = "12")
+        public Long chargeId;
+        @Schema(example = "34")
+        public Long transactionId;
+        @Schema(example = "Processing fee")
+        public String name;
     }
 
     @Schema(description = "Loan transaction type enum data (same as basic loan)")
@@ -103,6 +123,8 @@ public final class WorkingCapitalLoanTransactionsApiResourceSwagger {
 
         @Schema(example = "62")
         public Long id;
+        @Schema(description = "Payment type")
+        public PaymentTypeData paymentType;
         @Schema(example = "acc123")
         public String accountNumber;
         @Schema(example = "che123")
@@ -113,6 +135,27 @@ public final class WorkingCapitalLoanTransactionsApiResourceSwagger {
         public String receiptNumber;
         @Schema(example = "ban123")
         public String bankNumber;
+    }
+
+    @Schema(description = "Payment type data")
+    public static final class PaymentTypeData {
+
+        private PaymentTypeData() {}
+
+        @Schema(example = "1")
+        public Long id;
+        @Schema(example = "Money Transfer")
+        public String name;
+        @Schema(example = "Transfer via banking network")
+        public String description;
+        @Schema(example = "false")
+        public Boolean isCashPayment;
+        @Schema(example = "1")
+        public Long position;
+        @Schema(example = "PAYMENT_TYPE_CODE")
+        public String codeName;
+        @Schema(example = "false")
+        public Boolean isSystemDefined;
     }
 
     @Schema(description = "Payment details for transaction request payload")
@@ -145,7 +188,8 @@ public final class WorkingCapitalLoanTransactionsApiResourceSwagger {
         public String name;
     }
 
-    @Schema(description = "Request for transaction command: repayment, creditBalanceRefund, discountFee, or discountFeeAdjustment")
+    @Schema(description = "Request for transaction command: repayment, creditBalanceRefund, discountFee, discountFeeAdjustment, "
+            + "chargeOff, undoChargeOff, writeOff or undoWriteOff")
     public static final class PostWorkingCapitalLoanTransactionsRequest {
 
         private PostWorkingCapitalLoanTransactionsRequest() {}
@@ -158,10 +202,16 @@ public final class WorkingCapitalLoanTransactionsApiResourceSwagger {
         public String transactionDate;
         @Schema(example = "42", description = "Disbursement transaction id for discountFee; discount fee transaction id for discountFeeAdjustment")
         public Long relatedResourceId;
-        @Schema(example = "100.0", description = "Transaction amount")
+        @Schema(example = "100.0", description = "Transaction amount. For command=recoveryPayment it may not exceed the loan's writtenOffOutstanding")
         public BigDecimal transactionAmount;
         @Schema(example = "12", description = "Optional code value id for transaction classification")
         public Long classificationId;
+        @Schema(example = "7", description = "Optional charge-off reason code value id (command=chargeOff)")
+        public Long chargeOffReasonId;
+        @Schema(example = "3", description = "Optional write-off reason code value id (command=writeOff)")
+        public Long writeoffReasonId;
+        @Schema(example = "undo-write-off-ext-001", description = "Optional external id for the reversal (command=undoChargeOff, undoWriteOff)")
+        public String reversalExternalId;
         @Schema(example = "Repayment note")
         public String note;
         @Schema(example = "repayment-ext-001")
@@ -181,6 +231,34 @@ public final class WorkingCapitalLoanTransactionsApiResourceSwagger {
         public Long clientId;
         @Schema(example = "3")
         public Long loanId;
+        @Schema(example = "4")
+        public Long resourceId;
+        @Schema(example = "repayment-ext-001")
+        public String resourceExternalId;
+    }
+
+    @Schema(description = "Request for working capital loan transaction command execution")
+    public static final class ExecuteWorkingCapitalLoanTransactionCommandRequest {
+
+        private ExecuteWorkingCapitalLoanTransactionCommandRequest() {}
+
+        @Schema(example = "loan-ext-001")
+        public String reversalExternalId;
+    }
+
+    @Schema(description = "Response for working capital loan transaction command execution")
+    public static final class ExecuteWorkingCapitalLoanTransactionCommandResponse {
+
+        private ExecuteWorkingCapitalLoanTransactionCommandResponse() {}
+
+        @Schema(example = "1")
+        public Long officeId;
+        @Schema(example = "2")
+        public Long clientId;
+        @Schema(example = "3")
+        public Long loanId;
+        @Schema(example = "loan-ext-001")
+        public String loanExternalId;
         @Schema(example = "4")
         public Long resourceId;
         @Schema(example = "repayment-ext-001")

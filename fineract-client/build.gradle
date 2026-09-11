@@ -32,7 +32,7 @@ openApiMeta {
 }
 
 openApiValidate {
-    inputSpec = file(swaggerFile)
+    inputSpec = file(rootProject.ext.swaggerFile)
     recommend = true
 }
 
@@ -62,7 +62,8 @@ task buildJavaSdk(type: org.openapitools.generator.gradle.plugin.tasks.GenerateT
     verbose = false
     validateSpec = false
     skipValidateSpec = true
-    inputSpec = file(swaggerFile)
+    cleanupOutput = true
+    inputSpec = file(rootProject.ext.swaggerFile)
     outputDir = file("$buildDir/generated/temp-java")
     templateDir = file("$projectDir/src/main/resources/templates/java")
     groupId = 'org.apache.fineract'
@@ -79,6 +80,8 @@ task buildJavaSdk(type: org.openapitools.generator.gradle.plugin.tasks.GenerateT
     ]
     generateModelTests = false
     generateApiTests = false
+    generateModelDocumentation = false
+    generateApiDocumentation = false
     ignoreFileOverride = file("$projectDir/.openapi-generator-ignore")
     dependsOn(':fineract-provider:resolve')
 }
@@ -88,7 +91,8 @@ task buildTypescriptAngularSdk(type: org.openapitools.generator.gradle.plugin.ta
     verbose = false
     validateSpec = false
     skipValidateSpec = true
-    inputSpec = file(swaggerFile)
+    cleanupOutput = true
+    inputSpec = file(rootProject.ext.swaggerFile)
     outputDir = file("$buildDir/generated/typescript")
     apiPackage = 'apache-fineract-client/services'
     invokerPackage = 'apache-fineract-client/invoker'
@@ -98,9 +102,10 @@ task buildTypescriptAngularSdk(type: org.openapitools.generator.gradle.plugin.ta
         configurationPrefix: 'apacheFineractClient',
         ngVersion: '12.0.0',
         npmName: '@apache/fineract-client',
-        npmRepository: "${npmRepository}"
+        npmRepository: "${rootProject.ext.npmRepository}"
     ]
     dependsOn(':fineract-provider:resolve')
+    mustRunAfter(buildJavaSdk)
 }
 
 task buildTypescriptFetchSdk(type: org.openapitools.generator.gradle.plugin.tasks.GenerateTask) {
@@ -108,7 +113,8 @@ task buildTypescriptFetchSdk(type: org.openapitools.generator.gradle.plugin.task
     verbose = false
     validateSpec = false
     skipValidateSpec = true
-    inputSpec = file(swaggerFile)
+    cleanupOutput = true
+    inputSpec = file(rootProject.ext.swaggerFile)
     outputDir = file("$buildDir/generated/typescript-fetch")
     configOptions = [
         npmName: '@apache/fineract-client-fetch',
@@ -118,6 +124,7 @@ task buildTypescriptFetchSdk(type: org.openapitools.generator.gradle.plugin.task
         withInterfaces: 'true'
     ]
     dependsOn(':fineract-provider:resolve')
+    mustRunAfter(buildTypescriptAngularSdk)
 }
 
 task buildAsciidoc(type: org.openapitools.generator.gradle.plugin.tasks.GenerateTask){
@@ -125,7 +132,8 @@ task buildAsciidoc(type: org.openapitools.generator.gradle.plugin.tasks.Generate
     verbose = false
     validateSpec = false
     skipValidateSpec = true
-    inputSpec = file(swaggerFile)
+    cleanupOutput = true
+    inputSpec = file(rootProject.ext.swaggerFile)
     outputDir = file("$buildDir/generated/asciidoc")
     apiPackage = 'org.apache.fineract.client.services'
     invokerPackage = 'org.apache.fineract.client'
@@ -145,6 +153,10 @@ task buildAsciidoc(type: org.openapitools.generator.gradle.plugin.tasks.Generate
         useMethodAndPath: 'true'
     ]
     dependsOn(':fineract-provider:resolve')
+    mustRunAfter(buildTypescriptAngularSdk)
+    // ':fineract-doc' used to force a regeneration by depending on ':fineract-client:clean', which
+    // put an unordered clean into any graph that also built this project. Regenerate here instead.
+    outputs.upToDateWhen { false }
 }
 
 // Configure source sets with proper output directories

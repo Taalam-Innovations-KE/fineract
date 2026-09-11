@@ -14,6 +14,12 @@ on:
   schedule:
     - cron: '0 21 * * *'
   workflow_dispatch:
+    inputs:
+      upload_artifacts:
+        description: Upload test results, reports, and logs even when jobs succeed
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -48,6 +54,8 @@ jobs:
         vars.ENABLE_PRIVATE_REPOSITORY_CI == 'true'
       }}
     uses: ./.github/workflows/build-core.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -61,6 +69,8 @@ jobs:
         startsWith(github.ref_name, '1.')
       }}
     uses: ./.github/workflows/build-progressive-loan.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -74,6 +84,8 @@ jobs:
         startsWith(github.ref_name, '1.')
       }}
     uses: ./.github/workflows/build-docker.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -93,6 +105,8 @@ jobs:
   run-quality-checks:
     needs: build-core
     uses: ./.github/workflows/build-quality-checks.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -106,6 +120,8 @@ jobs:
         startsWith(github.ref_name, '1.')
       }}
     uses: ./.github/workflows/build-cucumber.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -119,6 +135,8 @@ jobs:
         startsWith(github.ref_name, '1.')
       }}
     uses: ./.github/workflows/build-postgresql.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -132,6 +150,8 @@ jobs:
         startsWith(github.ref_name, '1.')
       }}
     uses: ./.github/workflows/build-mysql.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -145,6 +165,8 @@ jobs:
         startsWith(github.ref_name, '1.')
       }}
     uses: ./.github/workflows/build-mariadb.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -158,6 +180,8 @@ jobs:
         startsWith(github.ref_name, '1.')
       }}
     uses: ./.github/workflows/build-e2e-tests.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -184,6 +208,8 @@ jobs:
         startsWith(github.ref_name, '1.')
       }}
     uses: ./.github/workflows/smoke-messaging.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -197,6 +223,16 @@ jobs:
         startsWith(github.ref_name, '1.')
       }}
     uses: ./.github/workflows/verify-api-backward-compatibility.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
+    secrets:
+      DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
+
+  run-generated-client-api-method-compatibility:
+    needs: build-core
+    uses: ./.github/workflows/verify-generated-client-api-method-compatibility.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -223,6 +259,8 @@ jobs:
         startsWith(github.ref_name, '1.')
       }}
     uses: ./.github/workflows/verify-liquibase-ddl-safety.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -236,6 +274,8 @@ jobs:
         startsWith(github.ref_name, '1.')
       }}
     uses: ./.github/workflows/regression-safety-db-changes.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -270,6 +310,8 @@ jobs:
         startsWith(github.ref_name, '1.')
       }}
     uses: ./.github/workflows/run-integration-test-sequentially-postgresql.yml
+    with:
+      upload_artifacts: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_artifacts }}
     secrets:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 

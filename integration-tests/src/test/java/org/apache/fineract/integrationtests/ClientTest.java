@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import com.google.gson.Gson;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.builder.ResponseSpecBuilder;
@@ -56,6 +57,7 @@ public class ClientTest {
     private static final SecureRandom rand = new SecureRandom();
 
     private ResponseSpecification responseSpec;
+    private ResponseSpecification responseSpecForValidationError;
     private RequestSpecification requestSpec;
     private ClientHelper clientHelper;
     private GlobalConfigurationHelper globalConfigurationHelper;
@@ -66,6 +68,8 @@ public class ClientTest {
         requestSpec = new RequestSpecBuilder().setContentType(ContentType.JSON).build();
         requestSpec.header("Authorization", "Basic " + Utils.loginIntoServerAndGetBase64EncodedAuthenticationKey());
         responseSpec = new ResponseSpecBuilder().expectStatusCode(200).build();
+        // TODO: figure out why Jakarta validation throws 403 instead of 400 (same note as StaffTest)
+        responseSpecForValidationError = new ResponseSpecBuilder().expectStatusCode(400).build();
         clientHelper = new ClientHelper(requestSpec, responseSpec);
         globalConfigurationHelper = new GlobalConfigurationHelper();
     }
@@ -74,6 +78,34 @@ public class ClientTest {
     public void tearDown() {
         globalConfigurationHelper.resetAllDefaultGlobalConfigurations();
         globalConfigurationHelper.verifyAllDefaultGlobalConfigurations();
+    }
+
+    @Test
+    public void testClientCreateWithInvalidMobileNoValidationError() {
+        // given
+        final HashMap<String, Object> map = ClientHelper.setInitialClientValues("1", ClientHelper.LEGALFORM_ID_PERSON);
+        map.put("active", "true");
+        map.put("activationDate", ClientHelper.DEFAULT_DATE);
+        map.put("mobileNo", "invalid-phone-###");
+
+        // when/then: expects 400 (validation error), not 500 (would indicate the
+        // FineractPhoneProperties NPE regression from FINERACT-405 has resurfaced)
+        Utils.performServerPost(requestSpec, responseSpecForValidationError, "/fineract-provider/api/v1/clients?" + Utils.TENANT_IDENTIFIER,
+                new Gson().toJson(map));
+    }
+
+    @Test
+    public void testClientUpdateWithInvalidMobileNoValidationError() {
+        // given
+        final Integer clientId = ClientHelper.createClient(requestSpec, responseSpec);
+        final HashMap<String, Object> map = new HashMap<>();
+        map.put("mobileNo", "invalid-phone-###");
+        map.put("locale", "en");
+
+        // when/then: expects 400 (validation error), not 500 (would indicate the
+        // FineractPhoneProperties NPE regression from FINERACT-405 has resurfaced)
+        final String updateClientUrl = "/fineract-provider/api/v1/clients/" + clientId + "?" + Utils.TENANT_IDENTIFIER;
+        Utils.performServerPut(requestSpec, responseSpecForValidationError, updateClientUrl, new Gson().toJson(map));
     }
 
     @Test
@@ -205,11 +237,7 @@ public class ClientTest {
     @Test
     public void testClientAddressCreationWorks() {
         // given
-        globalConfigurationHelper.updateGlobalConfiguration(GlobalConfigurationConstants.ENABLE_ADDRESS,
-                new PutGlobalConfigurationsRequest().enabled(true));
-        GlobalConfigurationPropertyData updatedAddressEnabledConfig = globalConfigurationHelper
-                .getGlobalConfigurationByName(GlobalConfigurationConstants.ENABLE_ADDRESS);
-        assertThat(updatedAddressEnabledConfig.getEnabled()).isTrue();
+        enableAddress();
 
         Integer addressTypeId = CodeHelper.createAddressTypeCodeValue(requestSpec, responseSpec,
                 Utils.randomStringGenerator("Residential address", 4), 0);
@@ -217,10 +245,15 @@ public class ClientTest {
         Integer stateId = CodeHelper.createStateCodeValue(requestSpec, responseSpec, Utils.randomStringGenerator("Budapest", 4), 0);
         String city = "Budapest";
         boolean addressIsActive = true;
+        String addressLine1 = "Pava Street 1";
         String postalCode = "1000";
+        String street = "Pava Street";
+        String townVillage = "Ferencvaros";
+        String countyDistrict = "Pest County";
 
         // when
-        ClientAddressRequest addressRequest = new ClientAddressRequest().postalCode(postalCode).city(city)
+        ClientAddressRequest addressRequest = new ClientAddressRequest().street(street).townVillage(townVillage)
+                .countyDistrict(countyDistrict).addressLine1(addressLine1).postalCode(postalCode).city(city)
                 .countryId(Long.valueOf(countryId)).stateProvinceId(Long.valueOf(stateId)).addressTypeId(addressTypeId.longValue())
                 .isActive(addressIsActive);
         PostClientsRequest request = ClientHelper.defaultClientCreationRequest().address(List.of(addressRequest));
@@ -236,23 +269,33 @@ public class ClientTest {
         assertThat(addressResponse.getAddressTypeId()).isEqualTo((long) addressTypeId);
         assertThat(addressResponse.getIsActive()).isEqualTo(addressIsActive);
         assertThat(addressResponse.getPostalCode()).isEqualTo(postalCode);
+        assertThat(addressResponse.getStreet()).isEqualTo(street);
+        assertThat(addressResponse.getTownVillage()).isEqualTo(townVillage);
+        assertThat(addressResponse.getCountyDistrict()).isEqualTo(countyDistrict);
     }
 
     @Test
     public void testClientAddressCreationWorksAfterClientIsCreated() {
         // given
+        enableAddress();
+
         Integer addressTypeId = CodeHelper.createAddressTypeCodeValue(requestSpec, responseSpec,
                 Utils.randomStringGenerator("Residential address", 4), 0);
         Integer countryId = CodeHelper.createCountryCodeValue(requestSpec, responseSpec, Utils.randomStringGenerator("Hungary", 4), 0);
         Integer stateId = CodeHelper.createStateCodeValue(requestSpec, responseSpec, Utils.randomStringGenerator("Budapest", 4), 0);
         String city = "Budapest";
         boolean addressIsActive = true;
+        String addressLine1 = "Rakoczi Street 1";
         String postalCode = "1000";
+        String street = "Rakoczi Street";
+        String townVillage = "Belvaros";
+        String countyDistrict = "Buda District";
 
         PostClientsRequest clientRequest = ClientHelper.defaultClientCreationRequest();
         final Integer clientId = ClientHelper.createClient(requestSpec, responseSpec, clientRequest);
         // when
-        ClientAddressRequest request = new ClientAddressRequest().postalCode(postalCode).city(city).countryId(Long.valueOf(countryId))
+        ClientAddressRequest request = new ClientAddressRequest().street(street).townVillage(townVillage).countyDistrict(countyDistrict)
+                .addressLine1(addressLine1).postalCode(postalCode).city(city).countryId(Long.valueOf(countryId))
                 .stateProvinceId(Long.valueOf(stateId)).isActive(addressIsActive);
         PostClientClientIdAddressesResponse response = ClientHelper.createClientAddress(requestSpec, responseSpec, clientId.longValue(),
                 addressTypeId, request);
@@ -266,6 +309,30 @@ public class ClientTest {
         assertThat(addressResponse.getAddressTypeId()).isEqualTo((long) addressTypeId);
         assertThat(addressResponse.getIsActive()).isEqualTo(addressIsActive);
         assertThat(addressResponse.getPostalCode()).isEqualTo(postalCode);
+        assertThat(addressResponse.getStreet()).isEqualTo(street);
+        assertThat(addressResponse.getTownVillage()).isEqualTo(townVillage);
+        assertThat(addressResponse.getCountyDistrict()).isEqualTo(countyDistrict);
+
+        String updatedStreet = "Andrassy Avenue";
+        String updatedTownVillage = "Terezvaros";
+        String updatedCountyDistrict = "Central District";
+        ClientHelper.updateClientAddress(requestSpec, responseSpec, clientId.longValue(),
+                new ClientAddressRequest().addressId(addressResponse.getAddressId()).street(updatedStreet).townVillage(updatedTownVillage)
+                        .countyDistrict(updatedCountyDistrict));
+
+        List<AddressData> updatedClientAddresses = ClientHelper.getClientAddresses(requestSpec, responseSpec, clientId);
+        AddressData updatedAddressResponse = updatedClientAddresses.get(0);
+        assertThat(updatedAddressResponse.getStreet()).isEqualTo(updatedStreet);
+        assertThat(updatedAddressResponse.getTownVillage()).isEqualTo(updatedTownVillage);
+        assertThat(updatedAddressResponse.getCountyDistrict()).isEqualTo(updatedCountyDistrict);
+    }
+
+    private void enableAddress() {
+        globalConfigurationHelper.updateGlobalConfiguration(GlobalConfigurationConstants.ENABLE_ADDRESS,
+                new PutGlobalConfigurationsRequest().enabled(true));
+        GlobalConfigurationPropertyData updatedAddressEnabledConfig = globalConfigurationHelper
+                .getGlobalConfigurationByName(GlobalConfigurationConstants.ENABLE_ADDRESS);
+        assertThat(updatedAddressEnabledConfig.getEnabled()).isTrue();
     }
 
     @Test
